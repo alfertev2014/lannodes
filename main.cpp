@@ -36,12 +36,10 @@ int bindDgramSocket(struct sockaddr_in *addr)
     }
 
     int broadcastSocketOption = 1;
-    if (setsockopt(socketFd,
-           SOL_SOCKET,
-           SO_BROADCAST,
-           &broadcastSocketOption,
-           sizeof(broadcastSocketOption)
-            ) < 0)
+    int err = setsockopt(socketFd,
+        SOL_SOCKET, SO_BROADCAST,
+        &broadcastSocketOption, sizeof(broadcastSocketOption));
+    if (err < 0)
     {
         // TODO: Log error
         return -1;
@@ -127,7 +125,19 @@ enum MessageType
     IAmYourSlave,
 };
 
-typedef int NodeID;
+typedef uint32_t NodeID;
+
+struct NodeDescriptor
+{
+    struct sockaddr_in peerAddress;
+    NodeID id;
+
+    void setAddress(uint32_t ipAddress, uint16_t port)
+    {
+        memset(&this->peerAddress, 0, sizeof(struct sockaddr_in));
+        initSockedAddress(&this->peerAddress, ipAddress, port);
+    }
+};
 
 struct SelfNode
 {
@@ -145,62 +155,6 @@ struct SelfNode
         this->state = WithoutMaster;
     }
 };
-
-
-
-void Node_destroy(struct Node *node)
-{
-    // TODO: free
-}
-
-#define MAX_BUFFER_SIZE 10
-
-struct MessageStruct {
-    NodeID selfID;
-    NodeID destID;
-    enum MessageType message;
-};
-
-
-static char *NodeID_serializeTo(NodeID id, char *buffer)
-{
-    ((uint32_t*)buffer)[0] = htonl((uint32_t)id);
-    buffer += sizeof(uint32_t);
-    return buffer;
-}
-
-static int MessageStruct_serializeTo(struct MessageStruct *message, char *buffer)
-{
-    char *pos = buffer;
-    pos = NodeID_serializeTo(message->selfID, buffer);
-}
-
-static void sendMessage(int socketFd, int ipAddress, short port, struct MessageStruct message, char *content)
-{
-    char *buffer = (char*)malloc(MAX_BUFFER_SIZE);
-    if (!buffer) {
-        // TODO: Log error
-        return;
-    }
-
-
-    free(buffer);
-}
-
-void Node_sendTo(struct Node *node, struct Node *destNode, enum MessageType message)
-{
-
-}
-
-void Node_broadcast(struct Node *node, enum MessageType message)
-{
-
-}
-
-void Node_handleMessage(struct Node *node, enum MessageType message, NodeID senderNode)
-{
-
-}
 
 int main(int argc, char * argv[])
 {
