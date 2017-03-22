@@ -1,2 +1,7 @@
+main.h
+networking.cpp
+networking.h
+timers.cpp
+timers.h
 main.cpp
 Makefile

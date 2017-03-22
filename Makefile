@@ -3,11 +3,13 @@ TARGET = lannodes
 
 all: $(TARGET)
 
-main.o : main.cpp
+%.cpp : %.h
+
+%.o : %.cpp
 	gcc $(CFLAGS) -c -o $@ $<
 
 
-$(TARGET) : main.o
+$(TARGET) : timers.o networking.o main.o
 	gcc $(CFLAGS) -o $@ $<
 
 
