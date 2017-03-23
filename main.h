@@ -3,5 +3,6 @@
 
 #include "timers.h"
 #include "networking.h"
+#include "nodes.h"
 
 #endif // MAIN_H

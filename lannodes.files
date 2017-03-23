@@ -1,6 +1,8 @@
 main.h
 networking.cpp
 networking.h
+nodes.cpp
+nodes.h
 timers.cpp
 timers.h
 main.cpp
