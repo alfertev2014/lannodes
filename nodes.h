@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "timers.h"
 #include "networking.h"
 
 enum NodeState
@@ -54,133 +55,26 @@ struct SelfNode
 
     struct Networking net;
 
-    void init(struct NetworkingConfig *netConfig)
-    {
-        memset(&this->net, 0, sizeof(struct Networking));
-        this->net.init(netConfig);
+    int init(struct NetworkingConfig *netConfig);
 
-        this->id = getUniqueNodeId();
-        this->state = WithoutMaster;
-    }
 
-    NodeID getUniqueNodeId()
-    {
-        // TODO: use network params
-    }
+    NodeID getUniqueNodeId();
 
-    void run()
-    {
-        becameWithoutMaster();
-    }
+    void run();
 
-    void becameWithoutMaster()
-    {
-        this->state = WithoutMaster;
-        broadcastMessage(WhoIsMaster);
-        startTimer_WhoIsMaster();
-    }
+    void becameWithoutMaster();
 
-    void sendMessage(enum MessageType type, NodeID receiver)
-    {
+    void sendMessage(enum MessageType type, NodeID receiver);
+    void broadcastMessage(enum MessageType type);
 
-    }
+    bool compareWithSelf(NodeID senderId);
 
-    void broadcastMessage(enum MessageType type)
-    {
+    void onMessageReceived(enum MessageType type, NodeID senderId);
 
-    }
-
-    bool compareWithSelf(NodeID senderId)
-    {
-
-    }
-
-    void onMessageReceived(enum MessageType type, NodeID senderId)
-    {
-        switch (type) {
-        case WhoIsMaster:
-            if (this->state == Master) {
-                sendMessage(IAmMaster, senderId);
-            }
-            break;
-        case IAmMaster:
-            if (this->state == WithoutMaster) {
-                this->state = SubscribingToMaster;
-                this->myMaster = senderId;
-                sendMessage(IAmYourSlave, senderId);
-                startTimerSubscribingToMaster();
-            }
-            else if (this->state == Slave && this->myMaster == senderId) {
-                startMonitoringMasterTimer();
-            }
-            break;
-        case IWantToBeMaster:
-            switch (this->state) {
-            case Master:
-                sendMessage(IAmMaster, senderId);
-                break;
-            case Slave:
-
-                break;
-            case WhantToBeMaster:
-                if (compareWithSelf(senderId)) {
-                    sendMessage(IAmGreaterThanYou, senderId);
-                }
-                break;
-            default:
-                break;
-            }
-            break;
-        case IAmYourSlave:
-            if (this->state == Master) {
-                sendMessage(IAmYourMaster, senderId);
-            }
-            break;
-        case IAmYourMaster:
-            if (this->state == SubscribingToMaster && this->myMaster == senderId) {
-                this->state = Slave;
-                sendMessage(PingMaster, this->myMaster);
-                startWaitForPongMasterTimer();
-            }
-            break;
-        case PingMaster:
-            if (this->state == Master) {
-                sendMessage(PongMaster, senderId);
-            }
-            break;
-        case PongMaster:
-            if (this->state == Slave) {
-                startMonitoringMasterTimer();
-            }
-            break;
-        default:
-            break;
-        }
-    }
-
-    void onWhoIsMasterTimeout()
-    {
-        this->state = WhantToBeMaster;
-        broadcastMessage(IWantToBeMaster);
-    }
-
-    void onSubscribingToMasterTimeout()
-    {
-        becameWithoutMaster();
-    }
-
-    void onWaitForPongMasterTimeout()
-    {
-        becameWithoutMaster();
-    }
-
-    void onMonitoringMasterTimeout()
-    {
-        if (this->state == Slave) {
-            sendMessage(PingMaster, this->myMaster);
-            startWaitForPongMasterTimer();
-        }
-    }
+    void onWhoIsMasterTimeout();
+    void onSubscribingToMasterTimeout();
+    void onWaitForPongMasterTimeout();
+    void onMonitoringMasterTimeout();
 };
 
 #endif // NODES_H

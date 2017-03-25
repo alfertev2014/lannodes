@@ -1,38 +1,29 @@
 #ifndef NETWORKING_H
 #define NETWORKING_H
 
-// int types
-#include <stdint.h>
-
-// memset
-#include <string.h>
-
-#include <sys/types.h>
-#include <ifaddrs.h>
-
-// socket, ip
-#include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
-
-// close fd
-#include <unistd.h>
 
 struct NetworkingConfig
 {
     uint16_t udpPort;
 };
 
+typedef (*RecvHandler)(struct sockaddr_in* senderAddress, char *message, size_t messageSize, void *arg);
+
 struct Networking
 {
-    struct sockaddr_in selfDgramAddress;
+    struct sockaddr_in recvDgramAddress;
     struct sockaddr_in broadcastDgramAddress;
     int dgramSocketFd;
 
+    bool breakRecvLoop;
+
     int init(struct NetworkingConfig *config);
-    void deinit();
+    int deinit();
 
     int broadcastDgram(char *content, size_t contentSize);
+    int runRecvLoop(RecvHandler handler, void *arg);
 };
 
 
