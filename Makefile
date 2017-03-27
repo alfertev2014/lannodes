@@ -5,8 +5,6 @@ LIBS = -lrt
 
 all: $(TARGET)
 
-%.cpp : %.h
-
 # pull in dependency info for *existing* .o files
 -include $(OBJS:.o=.d)
 
