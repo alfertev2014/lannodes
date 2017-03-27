@@ -3,12 +3,12 @@
 
 #include <time.h>
 
-typedef void (*TimerHandler)(void*);
-
 typedef union {
     int intValue;
     void *ptrValue;
 } TimerHandlerArgument;
+
+typedef void (*TimerHandler)(TimerHandlerArgument);
 
 struct Timer
 {

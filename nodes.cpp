@@ -97,7 +97,7 @@ void SelfNode::becameWithoutMaster()
 {
     this->state = WithoutMaster;
     this->broadcastMessage(WhoIsMaster);
-    this->startTimer_WhoIsMaster();
+    this->whoIsMasterTimer.start();
 }
 
 #define MESSAGE_BUFFER_SIZE 8192
@@ -145,11 +145,11 @@ void SelfNode::onMessageReceived(MessageType type, struct NodeDescriptor *sender
             this->state = SubscribingToMaster;
             this->myMaster = *senderId;
             this->sendMessage(IAmYourSlave, senderId);
-            this->startTimerSubscribingToMaster();
+            this->subscribingToMasterTimer.start();
         }
         else if (this->state == Slave &&
                 this->compareWithSelf(&senderId->id) == 0) {
-            this->startMonitoringMasterTimer();
+            this->monitoringMasterTimer.start();
         }
         break;
     case IWantToBeMaster:
@@ -184,7 +184,7 @@ void SelfNode::onMessageReceived(MessageType type, struct NodeDescriptor *sender
             compareNodeIdentities(&this->myMaster.id, &senderId->id) == 0) {
             this->state = Slave;
             this->sendMessage(PingMaster, &this->myMaster);
-            this->startWaitForPongMasterTimer();
+            this->waitForPongMasterTimer.start();
         }
         break;
     case PingMaster:
@@ -194,7 +194,7 @@ void SelfNode::onMessageReceived(MessageType type, struct NodeDescriptor *sender
         break;
     case PongMaster:
         if (this->state == Slave) {
-            this->startMonitoringMasterTimer();
+            this->monitoringMasterTimer.start();
         }
         break;
     default:
@@ -222,26 +222,41 @@ void SelfNode::onMonitoringMasterTimeout()
 {
     if (this->state == Slave) {
         this->sendMessage(PingMaster, &this->myMaster);
-        this->startWaitForPongMasterTimer();
+        this->waitForPongMasterTimer.start();
     }
 }
 
-void SelfNode::startTimer_WhoIsMaster()
+static void whoIsMasterTimeoutHandler(TimerHandlerArgument arg)
 {
-
+    if (arg.ptrValue)
+        ((SelfNode*)arg.ptrValue)->onWhoIsMasterTimeout();
 }
 
-void SelfNode::startTimerSubscribingToMaster()
+static void subscribingToMasterTimeoutHandler(TimerHandlerArgument arg)
 {
-
+    if (arg.ptrValue)
+        ((SelfNode*)arg.ptrValue)->onSubscribingToMasterTimeout();
 }
 
-void SelfNode::startMonitoringMasterTimer()
+static void waitForPongMasterTimeoutHandler(TimerHandlerArgument arg)
 {
-
+    if (arg.ptrValue)
+        ((SelfNode*)arg.ptrValue)->onWaitForPongMasterTimeout();
 }
 
-void SelfNode::startWaitForPongMasterTimer()
+static void monitoringMasterTimeoutHandler(TimerHandlerArgument arg)
 {
-
+    if (arg.ptrValue)
+        ((SelfNode*)arg.ptrValue)->onMonitoringMasterTimeout();
 }
+
+int SelfNode::initTimers()
+{
+    TimerHandlerArgument arg;
+    arg.ptrValue = (void*)this;
+    this->whoIsMasterTimer.init(1000, false, whoIsMasterTimeoutHandler, arg);
+    this->subscribingToMasterTimer.init(1000, false, subscribingToMasterTimeoutHandler, arg);
+    this->waitForPongMasterTimer.init(1000, false, waitForPongMasterTimeoutHandler, arg);
+    this->monitoringMasterTimer.init(1000, false, monitoringMasterTimeoutHandler, arg);
+}
+

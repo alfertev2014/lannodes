@@ -63,15 +63,18 @@ struct SelfNode
 
     void onMessageReceived(enum MessageType type, struct NodeDescriptor *senderId);
 
+
+    struct Timer whoIsMasterTimer,
+            subscribingToMasterTimer,
+            waitForPongMasterTimer,
+            monitoringMasterTimer;
+
+    int initTimers();
+
     void onWhoIsMasterTimeout();
     void onSubscribingToMasterTimeout();
     void onWaitForPongMasterTimeout();
     void onMonitoringMasterTimeout();
-
-    void startTimer_WhoIsMaster();
-    void startTimerSubscribingToMaster();
-    void startMonitoringMasterTimer();
-    void startWaitForPongMasterTimer();
 };
 
 #endif // NODES_H
