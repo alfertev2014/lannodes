@@ -23,6 +23,7 @@ struct Networking
     int deinit();
 
     int broadcastDgram(char *content, size_t contentSize);
+    int sendDgram(struct sockaddr_in *peerAddress, char *content, size_t contentSize);
     int runRecvLoop(RecvHandler handler, void *arg);
 };
 

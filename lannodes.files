@@ -1,3 +1,5 @@
+identity.cpp
+identity.h
 main.h
 networking.cpp
 networking.h

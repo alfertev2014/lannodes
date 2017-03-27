@@ -1,17 +1,19 @@
 #include "networking.h"
 
+#include <stdio.h>
+#include <string.h>
+
 // int types
 #include <stdint.h>
 
-// memset
-#include <string.h>
-
 // socket, ip
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 
-// close fd
-#include <unistd.h>
+
+
 
 static int bindDgramSocket(sockaddr_in *addr)
 {
@@ -93,6 +95,21 @@ int Networking::broadcastDgram(char *content, size_t contentSize)
     return sizeSent;
 }
 
+int Networking::sendDgram(sockaddr_in *peerAddress, char *content, size_t contentSize)
+{
+    ssize_t sizeBeSent =
+        sendto(this->dgramSocketFd,
+            content, contentSize,
+            0,
+            peerAddress, sizeof(struct sockaddr_in));
+
+    if (sizeBeSent < 0) {
+        // TODO: Log error
+    }
+
+    return sizeSent;
+}
+
 #define RECV_BUFFER_SIZE 8196
 
 char recvBuffer[RECV_BUFFER_SIZE];
@@ -123,3 +140,5 @@ int Networking::runRecvLoop(RecvHandler handler, void *arg)
         handler(senderAddress, recvBuffer, sizeBeRecieved, arg);
     }
 }
+
+
