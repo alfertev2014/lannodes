@@ -84,7 +84,9 @@ void recvDgramHandler(struct sockaddr_in* senderAddress, char *message, size_t m
     MessageType type;
     deserializeMessage(message, &type, &senderNode.id);
 
-    self->onMessageReceived(type, &senderNode);
+    if (self->compareWithSelf(&senderNode.id) != 0) {
+        self->onMessageReceived(type, &senderNode);
+    }
 }
 
 void SelfNode::run()
