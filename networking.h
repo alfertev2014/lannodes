@@ -9,7 +9,7 @@ struct NetworkingConfig
     uint16_t udpPort;
 };
 
-typedef (*RecvHandler)(struct sockaddr_in* senderAddress, char *message, size_t messageSize, void *arg);
+typedef void (*RecvHandler)(struct sockaddr_in* senderAddress, char *message, size_t messageSize, void *arg);
 
 struct Networking
 {
@@ -23,7 +23,7 @@ struct Networking
     int deinit();
 
     int broadcastDgram(char *content, size_t contentSize);
-    int sendDgram(struct sockaddr_in *peerAddress, char *content, size_t contentSize);
+    int sendDgram(sockaddr_in *peerAddress, char *content, size_t contentSize);
     int runRecvLoop(RecvHandler handler, void *arg);
 };
 

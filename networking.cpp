@@ -11,9 +11,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-
-
-
+#include <unistd.h>
 
 static int bindDgramSocket(sockaddr_in *addr)
 {
@@ -92,22 +90,22 @@ int Networking::broadcastDgram(char *content, size_t contentSize)
         // TODO: Log error
     }
 
-    return sizeSent;
+    return sizeBeSent;
 }
 
-int Networking::sendDgram(sockaddr_in *peerAddress, char *content, size_t contentSize)
+int Networking::sendDgram(struct sockaddr_in *peerAddress, char *content, size_t contentSize)
 {
     ssize_t sizeBeSent =
         sendto(this->dgramSocketFd,
             content, contentSize,
             0,
-            peerAddress, sizeof(struct sockaddr_in));
+            (struct sockaddr*)peerAddress, sizeof(struct sockaddr_in));
 
     if (sizeBeSent < 0) {
         // TODO: Log error
     }
 
-    return sizeSent;
+    return sizeBeSent;
 }
 
 #define RECV_BUFFER_SIZE 8196
@@ -137,7 +135,7 @@ int Networking::runRecvLoop(RecvHandler handler, void *arg)
             continue;
         }
 
-        handler(senderAddress, recvBuffer, sizeBeRecieved, arg);
+        handler(&senderAddress, recvBuffer, sizeBeRecieved, arg);
     }
 }
 

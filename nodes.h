@@ -59,7 +59,7 @@ struct SelfNode
     int sendMessage(enum MessageType type, struct NodeDescriptor *senderId);
     int broadcastMessage(enum MessageType type);
 
-    int compareWithSelf(NodeID senderId);
+    int compareWithSelf(struct NodeIdentity *senderId);
 
     void onMessageReceived(enum MessageType type, struct NodeDescriptor *senderId);
 
@@ -67,6 +67,11 @@ struct SelfNode
     void onSubscribingToMasterTimeout();
     void onWaitForPongMasterTimeout();
     void onMonitoringMasterTimeout();
+
+    void startTimer_WhoIsMaster();
+    void startTimerSubscribingToMaster();
+    void startMonitoringMasterTimer();
+    void startWaitForPongMasterTimer();
 };
 
 #endif // NODES_H

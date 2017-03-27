@@ -48,7 +48,7 @@ int TimerSystem::init()
 
     for (int i = 0; i < MAX_TIMERS_COUNT; ++i) {
         this->timers[i].handler = NULL;
-        this->timers[i].handlerArgument = NULL;
+        this->timers[i].handlerArgument.ptrValue = NULL;
         this->timers[i].created = false;
         this->timers[i].nextIndex = i + 1;
     }
@@ -94,7 +94,7 @@ int TimerSystem::createTimer(int interval, bool repeat, TimerHandler handler, Ti
         return -1;
     }
 
-    struct TimerDescriptor *timer = this->timers[index];
+    struct TimerDescriptor *timer = &this->timers[index];
 
     timer->timeout = interval;
     timer->isInterval = repeat;
@@ -123,7 +123,7 @@ int TimerSystem::startTimerByIndex(int index)
     its.it_value.tv_sec = seconds;
     its.it_value.tv_nsec = nanoseconds;
 
-    if (isInterval) {
+    if (timer->isInterval) {
         its.it_interval.tv_sec = seconds;
         its.it_interval.tv_nsec = nanoseconds;
     }
@@ -191,7 +191,7 @@ int TimerSystem::deleteTimerByIndex(int index)
     return 0;
 }
 
-void signalHandler(int sig, struct siginfo_t *si, void *uc)
+void signalHandler(int sig, siginfo_t *si, void *uc)
 {
 
 }
@@ -208,8 +208,6 @@ int registerSignalHandler()
     sigaction(SIGUSR1, &sa, NULL);
 
     /* Block timer signal temporarily */
-
-    printf("Blocking signal %d\n", SIG);
     sigemptyset(&mask);
     sigaddset(&mask, SIGUSR1);
     if (sigprocmask(SIG_SETMASK, &mask, NULL) == -1) {

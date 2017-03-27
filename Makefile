@@ -1,19 +1,28 @@
 TARGET = lannodes
+OBJS = main.o timers.o networking.o nodes.o
 
+LIBS = -lrt
 
 all: $(TARGET)
 
 %.cpp : %.h
 
+# pull in dependency info for *existing* .o files
+-include $(OBJS:.o=.d)
+
+
 %.o : %.cpp
 	gcc $(CFLAGS) -c -o $@ $<
+	gcc -MM $(CFLAGS) $< > $*.d
 
 
-$(TARGET) : timers.o networking.o main.o
-	gcc $(CFLAGS) -o $@ $<
+$(TARGET) : $(OBJS)
+	gcc $(CFLAGS) $< $(LIBS) -o $@
 
 
 .PHONY: all clean
 
 clean:
-	rm -f *.o $(TARGET)
+	rm -f *.o *.d $(TARGET)
+
+

@@ -53,10 +53,10 @@ size_t serializeMessage(MessageType type, struct NodeIdentity *nodeId, char *buf
 {
     char *bufferBegin = buffer;
 
-    ((uint32_t*)buffer)[0] = htonl(message->type);
+    ((uint32_t*)buffer)[0] = htonl(type);
     buffer += sizeof(uint32_t);
 
-    size_t size = serializeNodeIdentity(message->nodeId, buffer);
+    size_t size = serializeNodeIdentity(nodeId, buffer);
     buffer += size;
 
     return (size_t)(buffer - bufferBegin);
@@ -65,7 +65,7 @@ size_t serializeMessage(MessageType type, struct NodeIdentity *nodeId, char *buf
 size_t deserializeMessage(char *buffer, MessageType *type, struct NodeIdentity *nodeId)
 {
     char *bufferBegin = buffer;
-    type = ntohl(((uint32_t*)buffer)[0]);
+    *type = (MessageType)ntohl(((uint32_t*)buffer)[0]);
     buffer += sizeof(uint32_t);
 
     size_t size = deserializeNodeIdentity(buffer, nodeId);
@@ -105,8 +105,6 @@ char sendMessageBuffer[MESSAGE_BUFFER_SIZE];
 
 int SelfNode::sendMessage(MessageType type, NodeDescriptor *senderId)
 {
-    char * pos = serializeNodeIdentity(&this->nodeIdentity, sendMessageBuffer);
-
     size_t size = serializeMessage(type, &this->nodeIdentity, sendMessageBuffer);
 
     if (this->net.sendDgram(&senderId->peerAddress, sendMessageBuffer, size) == -1) {
@@ -119,8 +117,6 @@ int SelfNode::sendMessage(MessageType type, NodeDescriptor *senderId)
 
 int SelfNode::broadcastMessage(MessageType type)
 {
-    char * pos = serializeNodeIdentity(&this->nodeIdentity, sendMessageBuffer);
-
     size_t size = serializeMessage(type, &this->nodeIdentity, sendMessageBuffer);
 
     if (this->net.broadcastDgram(sendMessageBuffer, size) == -1) {
@@ -131,7 +127,7 @@ int SelfNode::broadcastMessage(MessageType type)
     return 0;
 }
 
-int SelfNode::compareWithSelf(NodeID senderId)
+int SelfNode::compareWithSelf(NodeIdentity *senderId)
 {
     return compareNodeIdentities(&this->nodeIdentity, senderId);
 }
@@ -147,14 +143,13 @@ void SelfNode::onMessageReceived(MessageType type, struct NodeDescriptor *sender
     case IAmMaster:
         if (this->state == WithoutMaster) {
             this->state = SubscribingToMaster;
-            *this->myMaster = *senderId;
+            this->myMaster = *senderId;
             this->sendMessage(IAmYourSlave, senderId);
             this->startTimerSubscribingToMaster();
         }
         else if (this->state == Slave &&
-                 compareNodeIdentities(&this->myMaster.id, &senderId->id) == 0) {
-                this->startMonitoringMasterTimer();
-            }
+                this->compareWithSelf(&senderId->id) == 0) {
+            this->startMonitoringMasterTimer();
         }
         break;
     case IWantToBeMaster:
@@ -229,4 +224,24 @@ void SelfNode::onMonitoringMasterTimeout()
         this->sendMessage(PingMaster, &this->myMaster);
         this->startWaitForPongMasterTimer();
     }
+}
+
+void SelfNode::startTimer_WhoIsMaster()
+{
+
+}
+
+void SelfNode::startTimerSubscribingToMaster()
+{
+
+}
+
+void SelfNode::startMonitoringMasterTimer()
+{
+
+}
+
+void SelfNode::startWaitForPongMasterTimer()
+{
+
 }
