@@ -5,15 +5,16 @@
 #include <stdio.h>
 
 // timers
-#include <signal.h>
 #include <time.h>
+#include <signal.h>
 
 #define MAX_TIMERS_COUNT 10
+#define MAX_TIMEOUTS_COUNT 20
 
 struct TimerDescriptor
 {
     bool created;
-    int nextIndex;
+    int nextFreeIndex;
 
     bool isArmed;
     int timeout;
@@ -27,7 +28,11 @@ struct TimerDescriptor
 struct TimerSystem
 {
     struct TimerDescriptor timers[MAX_TIMERS_COUNT];
-    int nextTimerIndex;
+    int firstFreeIndex;
+
+    volatile int timeoutQueue[MAX_TIMEOUTS_COUNT];
+    volatile int timeoutHead;
+    volatile int timeoutTail;
 
     int init();
     int getNextTimerIndex();
@@ -35,34 +40,40 @@ struct TimerSystem
     int startTimerByIndex(int index);
     int stopTimerByIndex(int index);
     int deleteTimerByIndex(int index);
+
+    int raiseTimerByIndex(int index);
+    int runAllTimeouts();
 } timerSystem;
 
 int registerSignalHandler();
 
 int TimerSystem::init()
 {
+    for (int i = 0; i < MAX_TIMERS_COUNT; ++i) {
+        TimerDescriptor *timer = &this->timers[i];
+        timer->handler = NULL;
+        timer->handlerArgument.ptrValue = NULL;
+        timer->created = false;
+        timer->nextFreeIndex = i + 1;
+    }
+
+    this->timers[MAX_TIMERS_COUNT - 1].nextFreeIndex = -1;
+    this->firstFreeIndex = 0;
+
+    this->timeoutHead = -1;
+    this->timeoutTail = -1;
+
     if (registerSignalHandler() == -1) {
         // TODO: Log error
         return -1;
     }
-
-    for (int i = 0; i < MAX_TIMERS_COUNT; ++i) {
-        this->timers[i].handler = NULL;
-        this->timers[i].handlerArgument.ptrValue = NULL;
-        this->timers[i].created = false;
-        this->timers[i].nextIndex = i + 1;
-    }
-
-    this->timers[MAX_TIMERS_COUNT - 1].nextIndex = -1;
-
-    this->nextTimerIndex = 0;
 
     return 0;
 }
 
 int TimerSystem::getNextTimerIndex()
 {
-    int currentIndex = this->nextTimerIndex;
+    int currentIndex = this->firstFreeIndex;
 
     if (currentIndex == -1) {
         // TODO: Log error
@@ -80,7 +91,7 @@ int TimerSystem::getNextTimerIndex()
         return -1;
     }
 
-    this->nextTimerIndex = current->nextIndex;
+    this->firstFreeIndex = current->nextFreeIndex;
     current->created = true;
 
     return currentIndex;
@@ -180,8 +191,8 @@ int TimerSystem::deleteTimerByIndex(int index)
         return -1;
     }
 
-    timer->nextIndex = this->nextTimerIndex;
-    this->nextTimerIndex = index;
+    timer->nextFreeIndex = this->firstFreeIndex;
+    this->firstFreeIndex = index;
 
     if (timer_delete(timer->timerId) == -1) {
         // TODO: Log error
@@ -191,29 +202,93 @@ int TimerSystem::deleteTimerByIndex(int index)
     return 0;
 }
 
+// in signal handler !!!!!!!
+int TimerSystem::raiseTimerByIndex(int index)
+{
+    if (index < 0 || index > MAX_TIMERS_COUNT) {
+        // TODO: Log error
+        return -1;
+    }
+
+    if (this->timeoutHead == this->timeoutTail && this->timeoutTail != -1) {
+        // TODO: Log error, queue is full
+        return -1;
+    }
+
+    if (this->timeoutTail != -1) {
+        this->timeoutQueue[this->timeoutTail] = index;
+        ++this->timeoutTail;
+        if (this->timeoutTail == MAX_TIMEOUTS_COUNT)
+            this->timeoutTail = 0;
+        this->timeoutQueue[this->timeoutTail] = index;
+    }
+    else {
+        this->timeoutQueue[0] = index;
+        this->timeoutTail = 0;
+        this->timeoutHead = 0;
+    }
+}
+
+int TimerSystem::runAllTimeouts()
+{
+    sigset_t mask;
+    sigset_t orig_mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGUSR1);
+
+    if (sigprocmask(SIG_BLOCK, &mask, &orig_mask) < 0) {
+        // TODO: Log error
+        return -1;
+    }
+
+    if (this->timeoutHead == -1)
+        return 0;
+
+    while(this->timeoutHead != this->timeoutTail) {
+        int raisedIndex = this->timeoutQueue[this->timeoutHead];
+        ++this->timeoutHead;
+
+        if (this->timeoutHead != this->timeoutTail) {
+            this->timeoutTail = -1;
+            this->timeoutHead = -1;
+        }
+
+        if (sigprocmask(SIG_SETMASK, &orig_mask, NULL) < 0) {
+            // TODO: Log error
+            return -1;
+        }
+
+        TimerDescriptor *timer = &this->timers[raisedIndex];
+        timer->handler(timer->handlerArgument);
+
+        if (sigprocmask(SIG_BLOCK, &mask, &orig_mask) < 0) {
+            // TODO: Log error
+            return -1;
+        }
+    }
+
+    if (sigprocmask(SIG_SETMASK, &orig_mask, NULL) < 0) {
+        // TODO: Log error
+        return -1;
+    }
+    return 0;
+}
+
 void signalHandler(int sig, siginfo_t *si, void *uc)
 {
+    int index = si->si_value.sival_int;
 
+    timerSystem.raiseTimerByIndex(index);
 }
 
 int registerSignalHandler()
 {
-    sigset_t mask;
-
     /* Register the signal handler */
     struct sigaction sa;
     sa.sa_flags = SA_SIGINFO;
     sa.sa_sigaction = signalHandler;
     sigemptyset(&sa.sa_mask);
     sigaction(SIGUSR1, &sa, NULL);
-
-    /* Block timer signal temporarily */
-    sigemptyset(&mask);
-    sigaddset(&mask, SIGUSR1);
-    if (sigprocmask(SIG_SETMASK, &mask, NULL) == -1) {
-        // TODO: Log error
-        return -1;
-    }
 
     return 0;
 }
@@ -244,4 +319,9 @@ int Timer::start()
 int Timer::stop()
 {
     return timerSystem.stopTimerByIndex(this->timerIndex);
+}
+
+int runAllPendingTimouts()
+{
+    return timerSystem.runAllTimeouts();
 }

@@ -20,4 +20,6 @@ struct Timer
     int stop();
 };
 
+int runAllPendingTimouts();
+
 #endif // TIMERS_H

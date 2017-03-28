@@ -13,6 +13,10 @@
 
 #include <unistd.h>
 
+#include <errno.h>
+
+#include "timers.h"
+
 static int bindDgramSocket(sockaddr_in *addr)
 {
     int socketFd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -29,6 +33,14 @@ static int bindDgramSocket(sockaddr_in *addr)
             &broadcastSocketOption, sizeof(broadcastSocketOption)) == -1) {
         // TODO: Log error
         return -1;
+    }
+
+    int reuseAddressSocketOption = 1;
+    if (setsockopt(socketFd,
+            SOL_SOCKET, SO_REUSEADDR,
+            &reuseAddressSocketOption, sizeof(int)) == -1) {
+        // TODO: Log error
+        return 1;
     }
 
 
@@ -131,7 +143,12 @@ int Networking::runRecvLoop(RecvHandler handler, void *arg)
                 (struct sockaddr*)&senderAddress, &addressLength);
 
         if (sizeBeRecieved < 0) {
-            // TODO: Log error
+            if (errno != EINTR) {
+                // TODO: Log error
+            }
+            else {
+                runAllPendingTimouts();
+            }
             continue;
         }
 
