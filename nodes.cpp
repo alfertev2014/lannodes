@@ -116,11 +116,11 @@ void SelfNode::becameWithoutMaster()
 #define MESSAGE_BUFFER_SIZE 8192
 char sendMessageBuffer[MESSAGE_BUFFER_SIZE];
 
-int SelfNode::sendMessage(MessageType type, NodeDescriptor *senderId)
+int SelfNode::sendMessage(MessageType type, struct sockaddr_in *peerAddress)
 {
     size_t size = serializeMessage(type, &this->nodeIdentity, sendMessageBuffer);
 
-    if (this->net.sendDgram(&senderId->peerAddress, sendMessageBuffer, size) == -1) {
+    if (this->net.sendDgram(peerAddress, sendMessageBuffer, size) == -1) {
         // TODO: Log error
         return -1;
     }
@@ -142,72 +142,93 @@ int SelfNode::broadcastMessage(MessageType type)
 
 int SelfNode::compareWithSelf(NodeIdentity *senderId)
 {
-    return NodeIdentity::compareNodeIdentities(&this->nodeIdentity, senderId);
+    return NodeIdentity::compareNodeIdentities(senderId, &this->nodeIdentity);
 }
 
-void SelfNode::onMessageReceived(MessageType type, struct NodeDescriptor *senderId)
+int SelfNode::compareWithCurrentMaster(NodeIdentity *senderId)
 {
+    return NodeIdentity::compareNodeIdentities(senderId, &this->myMaster.id);
+}
+
+void SelfNode::onMessageReceived(MessageType type, struct NodeDescriptor *sender)
+{
+    struct NodeIdentity *senderId = &sender->id;
+    struct sockaddr_in *senderAddress = &sender->peerAddress;
+
     switch (type) {
     case WhoIsMaster:
         if (this->state == Master) {
-            this->sendMessage(IAmMaster, senderId);
+            int cmp = this->compareWithSelf(senderId);
+            if (cmp < 0) {
+                if (this->broadcastMessage(IAmMaster) == -1) {
+                    // TODO: Log error
+                    return;
+                }
+            }
+            else if (cmp > 0) {
+                this->becameWithoutMaster();
+            }
+        }
+        else if (this->state == Slave) {
+            if (this->compareWithSelf(senderId) < 0) {
+                if (this->sendMessage(PleaseWait, senderAddress) == -1) {
+                    // TODO: Log error
+                    return;
+                }
+            }
+        }
+        else if (this->state == WithoutMaster) {
+            if (this->compareWithSelf(senderId) < 0) {
+                if (this->sendMessage(PleaseWait, senderAddress) == -1) {
+                    // TODO: Log error
+                    return;
+                }
+            }
         }
         break;
     case IAmMaster:
         if (this->state == WithoutMaster) {
-            this->state = SubscribingToMaster;
-            this->myMaster = *senderId;
-            this->sendMessage(IAmYourSlave, senderId);
-            this->subscribingToMasterTimer.start();
-        }
-        else if (this->state == Slave &&
-                this->compareWithSelf(&senderId->id) == 0) {
-            this->monitoringMasterTimer.start();
-        }
-        break;
-    case IWantToBeMaster:
-        switch (this->state) {
-        case Master:
-            this->sendMessage(IAmMaster, senderId);
-            break;
-        case Slave:
-
-            break;
-        case WhantToBeMaster: {
-            int cmp = this->compareWithSelf(&senderId->id);
-            if (cmp > 0) {
-                this->sendMessage(IAmGreaterThanYou, senderId);
-            }
-            else if (cmp < 0) {
-
-            }
-            break;
-        }
-        default:
-            break;
-        }
-        break;
-    case IAmYourSlave:
-        if (this->state == Master) {
-            this->sendMessage(IAmYourMaster, senderId);
-        }
-        break;
-    case IAmYourMaster:
-        if (this->state == SubscribingToMaster &&
-            NodeIdentity::compareNodeIdentities(&this->myMaster.id, &senderId->id) == 0) {
             this->state = Slave;
-            this->sendMessage(PingMaster, &this->myMaster);
-            this->waitForPongMasterTimer.start();
+            this->myMaster = *sender;
+            if (this->monitoringMasterTimer.start() == -1) {
+                // TODO: Log error
+                return;
+            }
+        }
+        else if (this->state == Slave) {
+            this->myMaster = *sender;
+            if (this->monitoringMasterTimer.start() == -1) {
+                // TODO: Log error
+                return;
+            }
+        }
+        else if (this->state == Master) {
+            int cmp = this->compareWithSelf(senderId);
+            if (cmp < 0) {
+                if (this->broadcastMessage(IAmMaster)) {
+                    // TODO: Log error
+                    return;
+                }
+            }
+            else if (cmp > 0) {
+                this->state = Slave;
+                this->myMaster = *sender;
+                if (this->monitoringMasterTimer.start() == -1) {
+                    // TODO: Log error
+                    return;
+                }
+            }
         }
         break;
-    case PingMaster:
-        if (this->state == Master) {
-            this->sendMessage(PongMaster, senderId);
-        }
-        break;
-    case PongMaster:
-        if (this->state == Slave) {
-            this->monitoringMasterTimer.start();
+    case PleaseWait:
+        if (this->state == WithoutMaster) {
+            int cmp = this->compareWithSelf(senderId);
+            if (cmp > 0) {
+                if (this->whoIsMasterTimer.start() == -1) {
+                    // TODO: Log error
+                    return;
+                }
+            }
         }
         break;
     default:
@@ -217,44 +238,22 @@ void SelfNode::onMessageReceived(MessageType type, struct NodeDescriptor *sender
 
 void SelfNode::onWhoIsMasterTimeout()
 {
-    this->state = WhantToBeMaster;
-    this->broadcastMessage(IWantToBeMaster);
-}
-
-void SelfNode::onSubscribingToMasterTimeout()
-{
-    this->becameWithoutMaster();
-}
-
-void SelfNode::onWaitForPongMasterTimeout()
-{
-    this->becameWithoutMaster();
+    this->state = Master;
+    if (this->broadcastMessage(IAmMaster) == -1) {
+        // TODO: Log error
+        return;
+    }
 }
 
 void SelfNode::onMonitoringMasterTimeout()
 {
-    if (this->state == Slave) {
-        this->sendMessage(PingMaster, &this->myMaster);
-        this->waitForPongMasterTimer.start();
-    }
+    this->becameWithoutMaster();
 }
 
 void SelfNode::whoIsMasterTimeoutHandler(TimerHandlerArgument arg)
 {
     if (arg.ptrValue)
         ((SelfNode*)arg.ptrValue)->onWhoIsMasterTimeout();
-}
-
-void SelfNode::subscribingToMasterTimeoutHandler(TimerHandlerArgument arg)
-{
-    if (arg.ptrValue)
-        ((SelfNode*)arg.ptrValue)->onSubscribingToMasterTimeout();
-}
-
-void SelfNode::waitForPongMasterTimeoutHandler(TimerHandlerArgument arg)
-{
-    if (arg.ptrValue)
-        ((SelfNode*)arg.ptrValue)->onWaitForPongMasterTimeout();
 }
 
 void SelfNode::monitoringMasterTimeoutHandler(TimerHandlerArgument arg)
@@ -267,10 +266,14 @@ int SelfNode::initTimers()
 {
     TimerHandlerArgument arg;
     arg.ptrValue = (void*)this;
-    if (this->whoIsMasterTimer.init(1000, false, SelfNode::whoIsMasterTimeoutHandler, arg) == -1) return -1;
-    if (this->subscribingToMasterTimer.init(1000, false, SelfNode::subscribingToMasterTimeoutHandler, arg) == -1) return -1;
-    if (this->waitForPongMasterTimer.init(1000, false, SelfNode::waitForPongMasterTimeoutHandler, arg) == -1) return -1;
-    if (this->monitoringMasterTimer.init(1000, false, SelfNode::monitoringMasterTimeoutHandler, arg) == -1) return -1;
+    if (this->whoIsMasterTimer.init(1000, false, SelfNode::whoIsMasterTimeoutHandler, arg) == -1) {
+        // TODO: Log error
+        return -1;
+    }
+    if (this->monitoringMasterTimer.init(5000, false, SelfNode::monitoringMasterTimeoutHandler, arg) == -1) {
+        // TODO: Log error
+        return -1;
+    }
     return 0;
 }
 

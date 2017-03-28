@@ -12,8 +12,6 @@
 enum NodeState
 {
     WithoutMaster,
-    SubscribingToMaster,
-    WhantToBeMaster,
     Master,
     Slave
 };
@@ -22,14 +20,7 @@ enum MessageType
 {
     WhoIsMaster,
     IAmMaster,
-    IWantToBeMaster,
-    IAmGreaterThanYou,
-
-    IAmYourMaster,
-    IAmYourSlave,
-
-    PingMaster,
-    PongMaster
+    PleaseWait,
 };
 
 
@@ -52,7 +43,6 @@ private:
     struct Networking net;
 
     struct Timer whoIsMasterTimer,
-            subscribingToMasterTimer,
             waitForPongMasterTimer,
             monitoringMasterTimer;
 
@@ -63,25 +53,22 @@ public:
 private:
     void becameWithoutMaster();
 
-    int sendMessage(enum MessageType type, struct NodeDescriptor *senderId);
+    int sendMessage(enum MessageType type, sockaddr_in *peerAddress);
     int broadcastMessage(enum MessageType type);
 
     int compareWithSelf(struct NodeIdentity *senderId);
+    int compareWithCurrentMaster(struct NodeIdentity *senderId);
 
     static void recvDgramHandler(struct sockaddr_in* senderAddress, char *message, size_t messageSize, void *arg);
 
-    void onMessageReceived(enum MessageType type, struct NodeDescriptor *senderId);
+    void onMessageReceived(enum MessageType type, struct NodeDescriptor *sender);
 
     int initTimers();
 
     static void whoIsMasterTimeoutHandler(TimerHandlerArgument arg);
-    static void subscribingToMasterTimeoutHandler(TimerHandlerArgument arg);
-    static void waitForPongMasterTimeoutHandler(TimerHandlerArgument arg);
     static void monitoringMasterTimeoutHandler(TimerHandlerArgument arg);
 
     void onWhoIsMasterTimeout();
-    void onSubscribingToMasterTimeout();
-    void onWaitForPongMasterTimeout();
     void onMonitoringMasterTimeout();
 };
 
