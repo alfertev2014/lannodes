@@ -48,7 +48,7 @@ static int getMACAddress(int fd, char *macAddressBuffer)
     return success ? 0 : -1;
 }
 
-int getSelfNodeIdentity(NodeIdentity *id)
+int NodeIdentity::getSelfNodeIdentity(NodeIdentity *id)
 {
     int socketFd = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -72,7 +72,7 @@ int getSelfNodeIdentity(NodeIdentity *id)
     return 0;
 }
 
-int compareNodeIdentities(struct NodeIdentity *self, struct NodeIdentity *other)
+int NodeIdentity::compareNodeIdentities(struct NodeIdentity *self, struct NodeIdentity *other)
 {
     int maccmp = memcmp(self->macAddress, other->macAddress, 6);
     if (maccmp > 0)

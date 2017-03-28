@@ -12,7 +12,12 @@ int SelfNode::init(NetworkingConfig *netConfig)
 
     memset(&this->nodeIdentity, 0, sizeof(struct NodeIdentity));
 
-    if (getSelfNodeIdentity(&this->nodeIdentity) == -1) {
+    if (NodeIdentity::getSelfNodeIdentity(&this->nodeIdentity) == -1) {
+        // TODO: Log error
+        return -1;
+    }
+
+    if (this->initTimers() == -1) {
         // TODO: Log error
         return -1;
     }
@@ -74,7 +79,7 @@ size_t deserializeMessage(char *buffer, MessageType *type, struct NodeIdentity *
     return (size_t)(buffer - bufferBegin);
 }
 
-void recvDgramHandler(struct sockaddr_in* senderAddress, char *message, size_t messageSize, void *arg)
+void SelfNode::recvDgramHandler(struct sockaddr_in* senderAddress, char *message, size_t messageSize, void *arg)
 {
     struct SelfNode *self = (struct SelfNode*)arg;
 
@@ -98,8 +103,14 @@ void SelfNode::run()
 void SelfNode::becameWithoutMaster()
 {
     this->state = WithoutMaster;
-    this->broadcastMessage(WhoIsMaster);
-    this->whoIsMasterTimer.start();
+    if (this->broadcastMessage(WhoIsMaster)) {
+        // TODO: Log error
+        return;
+    }
+    if (this->whoIsMasterTimer.start()) {
+        // TODO: Log error
+        return;
+    }
 }
 
 #define MESSAGE_BUFFER_SIZE 8192
@@ -131,7 +142,7 @@ int SelfNode::broadcastMessage(MessageType type)
 
 int SelfNode::compareWithSelf(NodeIdentity *senderId)
 {
-    return compareNodeIdentities(&this->nodeIdentity, senderId);
+    return NodeIdentity::compareNodeIdentities(&this->nodeIdentity, senderId);
 }
 
 void SelfNode::onMessageReceived(MessageType type, struct NodeDescriptor *senderId)
@@ -183,7 +194,7 @@ void SelfNode::onMessageReceived(MessageType type, struct NodeDescriptor *sender
         break;
     case IAmYourMaster:
         if (this->state == SubscribingToMaster &&
-            compareNodeIdentities(&this->myMaster.id, &senderId->id) == 0) {
+            NodeIdentity::compareNodeIdentities(&this->myMaster.id, &senderId->id) == 0) {
             this->state = Slave;
             this->sendMessage(PingMaster, &this->myMaster);
             this->waitForPongMasterTimer.start();
@@ -228,25 +239,25 @@ void SelfNode::onMonitoringMasterTimeout()
     }
 }
 
-static void whoIsMasterTimeoutHandler(TimerHandlerArgument arg)
+void SelfNode::whoIsMasterTimeoutHandler(TimerHandlerArgument arg)
 {
     if (arg.ptrValue)
         ((SelfNode*)arg.ptrValue)->onWhoIsMasterTimeout();
 }
 
-static void subscribingToMasterTimeoutHandler(TimerHandlerArgument arg)
+void SelfNode::subscribingToMasterTimeoutHandler(TimerHandlerArgument arg)
 {
     if (arg.ptrValue)
         ((SelfNode*)arg.ptrValue)->onSubscribingToMasterTimeout();
 }
 
-static void waitForPongMasterTimeoutHandler(TimerHandlerArgument arg)
+void SelfNode::waitForPongMasterTimeoutHandler(TimerHandlerArgument arg)
 {
     if (arg.ptrValue)
         ((SelfNode*)arg.ptrValue)->onWaitForPongMasterTimeout();
 }
 
-static void monitoringMasterTimeoutHandler(TimerHandlerArgument arg)
+void SelfNode::monitoringMasterTimeoutHandler(TimerHandlerArgument arg)
 {
     if (arg.ptrValue)
         ((SelfNode*)arg.ptrValue)->onMonitoringMasterTimeout();
@@ -256,9 +267,10 @@ int SelfNode::initTimers()
 {
     TimerHandlerArgument arg;
     arg.ptrValue = (void*)this;
-    this->whoIsMasterTimer.init(1000, false, whoIsMasterTimeoutHandler, arg);
-    this->subscribingToMasterTimer.init(1000, false, subscribingToMasterTimeoutHandler, arg);
-    this->waitForPongMasterTimer.init(1000, false, waitForPongMasterTimeoutHandler, arg);
-    this->monitoringMasterTimer.init(1000, false, monitoringMasterTimeoutHandler, arg);
+    if (this->whoIsMasterTimer.init(1000, false, SelfNode::whoIsMasterTimeoutHandler, arg) == -1) return -1;
+    if (this->subscribingToMasterTimer.init(1000, false, SelfNode::subscribingToMasterTimeoutHandler, arg) == -1) return -1;
+    if (this->waitForPongMasterTimer.init(1000, false, SelfNode::waitForPongMasterTimeoutHandler, arg) == -1) return -1;
+    if (this->monitoringMasterTimer.init(1000, false, SelfNode::monitoringMasterTimeoutHandler, arg) == -1) return -1;
+    return 0;
 }
 

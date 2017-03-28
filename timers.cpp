@@ -25,8 +25,11 @@ struct TimerDescriptor
     TimerHandlerArgument handlerArgument;
 };
 
+static void signalHandler(int sig, siginfo_t *si, void *uc);
+
 struct TimerSystem
 {
+private:
     struct TimerDescriptor timers[MAX_TIMERS_COUNT];
     int firstFreeIndex;
 
@@ -34,18 +37,22 @@ struct TimerSystem
     volatile int timeoutHead;
     volatile int timeoutTail;
 
+public:
     int init();
-    int getNextTimerIndex();
     int createTimer(int interval, bool repeat, TimerHandler handler, TimerHandlerArgument argument);
     int startTimerByIndex(int index);
     int stopTimerByIndex(int index);
     int deleteTimerByIndex(int index);
 
-    int raiseTimerByIndex(int index);
     int runAllTimeouts();
-} timerSystem;
+private:
+    int getNextTimerIndex();
+    int raiseTimerByIndex(int index);
 
-int registerSignalHandler();
+    static int registerSignalHandler();
+
+    friend void signalHandler(int sig, siginfo_t *si, void *uc);
+} timerSystem;
 
 int TimerSystem::init()
 {
@@ -63,7 +70,7 @@ int TimerSystem::init()
     this->timeoutHead = -1;
     this->timeoutTail = -1;
 
-    if (registerSignalHandler() == -1) {
+    if (TimerSystem::registerSignalHandler() == -1) {
         // TODO: Log error
         return -1;
     }
@@ -274,16 +281,15 @@ int TimerSystem::runAllTimeouts()
     return 0;
 }
 
-void signalHandler(int sig, siginfo_t *si, void *uc)
+static void signalHandler(int sig, siginfo_t *si, void *uc)
 {
     int index = si->si_value.sival_int;
 
     timerSystem.raiseTimerByIndex(index);
 }
 
-int registerSignalHandler()
+int TimerSystem::registerSignalHandler()
 {
-    /* Register the signal handler */
     struct sigaction sa;
     sa.sa_flags = SA_SIGINFO;
     sa.sa_sigaction = signalHandler;
@@ -308,6 +314,9 @@ int Timer::init(int interval, bool repeat, TimerHandler handler, TimerHandlerArg
 
 int Timer::deinit()
 {
+    if (timerSystem.stopTimerByIndex(this->timerIndex) == -1) {
+        return -1;
+    }
     return timerSystem.deleteTimerByIndex(this->timerIndex);
 }
 
@@ -321,7 +330,7 @@ int Timer::stop()
     return timerSystem.stopTimerByIndex(this->timerIndex);
 }
 
-int runAllPendingTimouts()
+int Timer::runAllPendingTimouts()
 {
     return timerSystem.runAllTimeouts();
 }

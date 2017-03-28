@@ -147,13 +147,14 @@ int Networking::runRecvLoop(RecvHandler handler, void *arg)
                 // TODO: Log error
             }
             else {
-                runAllPendingTimouts();
+                Timer::runAllPendingTimouts();
             }
             continue;
         }
 
         handler(&senderAddress, recvBuffer, sizeBeRecieved, arg);
     }
+    return 0;
 }
 
 

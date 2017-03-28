@@ -18,8 +18,8 @@ struct Timer
     int deinit();
     int start();
     int stop();
-};
 
-int runAllPendingTimouts();
+    static int runAllPendingTimouts();
+};
 
 #endif // TIMERS_H

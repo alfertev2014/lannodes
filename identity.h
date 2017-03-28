@@ -8,10 +8,9 @@ struct NodeIdentity
 {
     pid_t processId;
     unsigned char macAddress[6];
+public:
+    static int compareNodeIdentities(struct NodeIdentity *self, struct NodeIdentity *other);
+    static int getSelfNodeIdentity(struct NodeIdentity *id);
 };
-
-int compareNodeIdentities(struct NodeIdentity *self, struct NodeIdentity *other);
-
-int getSelfNodeIdentity(struct NodeIdentity *id);
 
 #endif // IDENTITY_H
