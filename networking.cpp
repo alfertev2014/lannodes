@@ -16,13 +16,15 @@
 #include <errno.h>
 
 #include "timers.h"
+#include "logging.h"
 
-static int bindDgramSocket(sockaddr_in *addr)
+static int bindDgramSocket(struct sockaddr_in *addr)
 {
-    int socketFd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    int socketFd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0);
 
     if (socketFd < 0) {
-        // TODO: Log error
+        perror("Bind dgram socket");
+        logError();
         return -1;
     }
 
@@ -30,8 +32,9 @@ static int bindDgramSocket(sockaddr_in *addr)
 
     if (setsockopt(socketFd,
             SOL_SOCKET, SO_BROADCAST,
-            &broadcastSocketOption, sizeof(broadcastSocketOption)) == -1) {
-        // TODO: Log error
+            &broadcastSocketOption, sizeof(int)) == -1) {
+        perror("Set broadcast socket oprion");
+        logError();
         return -1;
     }
 
@@ -39,13 +42,15 @@ static int bindDgramSocket(sockaddr_in *addr)
     if (setsockopt(socketFd,
             SOL_SOCKET, SO_REUSEADDR,
             &reuseAddressSocketOption, sizeof(int)) == -1) {
-        // TODO: Log error
+        perror("Set reuse address socket option");
+        logError();
         return 1;
     }
 
 
-    if (bind(socketFd, (struct sockaddr*)&addr, sizeof(struct sockaddr_in)) == -1) {
-        // TODO: Log error
+    if (bind(socketFd, (struct sockaddr*)addr, sizeof(struct sockaddr_in)) == -1) {
+        perror("Bind dgram socket");
+        logError();
         return -1;
     }
 
@@ -53,14 +58,14 @@ static int bindDgramSocket(sockaddr_in *addr)
     return socketFd;
 }
 
-static void initSocketAddress(sockaddr_in *addr, uint32_t ipAddress, uint16_t port)
+static void initSocketAddress(struct sockaddr_in *addr, uint32_t ipAddress, uint16_t port)
 {
     addr->sin_family = AF_INET;
     addr->sin_port = htons(port);
     addr->sin_addr.s_addr = htonl(ipAddress);
 }
 
-int Networking::init(NetworkingConfig *config) {
+int Networking::init(struct NetworkingConfig *config) {
     this->breakRecvLoop = false;
 
     initSocketAddress(&this->recvDgramAddress, INADDR_ANY, config->udpPort);
@@ -68,7 +73,7 @@ int Networking::init(NetworkingConfig *config) {
 
     int socketFd = bindDgramSocket(&this->recvDgramAddress);
     if (socketFd == -1) {
-        // TODO: Log error
+        logError();
         return -1;
     }
 
@@ -82,7 +87,7 @@ int Networking::deinit()
     {
         if (close(this->dgramSocketFd) == -1)
         {
-            // TODO: Log error
+            logError();
             return -1;
         }
         this->dgramSocketFd = -1;
@@ -99,7 +104,9 @@ int Networking::broadcastDgram(char *content, size_t contentSize)
             (struct sockaddr*)&this->broadcastDgramAddress, sizeof(struct sockaddr_in));
 
     if (sizeBeSent < 0) {
-        // TODO: Log error
+        perror("Broadcast dgram");
+        logError();
+        return -1;
     }
 
     return sizeBeSent;
@@ -114,7 +121,8 @@ int Networking::sendDgram(struct sockaddr_in *peerAddress, char *content, size_t
             (struct sockaddr*)peerAddress, sizeof(struct sockaddr_in));
 
     if (sizeBeSent < 0) {
-        // TODO: Log error
+        perror("Send dgram");
+        logError();
     }
 
     return sizeBeSent;
@@ -127,32 +135,54 @@ char recvBuffer[RECV_BUFFER_SIZE];
 int Networking::runRecvLoop(RecvHandler handler, void *arg)
 {
     if (this->dgramSocketFd < 0) {
-        // TODO: Log error
+        logError();
         return -1;
     }
 
     this->breakRecvLoop = false;
 
+    sigset_t old_mask;
+
+    Timer::lockTimers(&old_mask);
+
     while (!this->breakRecvLoop) {
-        struct sockaddr_in senderAddress;
-        socklen_t addressLength = sizeof(struct sockaddr_in);
+        fd_set fds;
+        int res;
 
-        ssize_t sizeBeRecieved =
-            recvfrom(this->dgramSocketFd, recvBuffer, RECV_BUFFER_SIZE,
-                0,
-                (struct sockaddr*)&senderAddress, &addressLength);
+        FD_ZERO (&fds);
+        FD_SET (this->dgramSocketFd, &fds);
+        res = pselect(this->dgramSocketFd + 1, &fds, NULL, NULL, NULL, &old_mask);
 
-        if (sizeBeRecieved < 0) {
-            if (errno != EINTR) {
-                // TODO: Log error
+        if (res < 0 && errno != EINTR) {
+            perror ("select");
+            return -1;
+        }
+        else if (this->breakRecvLoop) {
+            break;
+        }
+        else if (res == 0)
+            continue;
+
+        if (FD_ISSET(this->dgramSocketFd, &fds)) {
+            struct sockaddr_in senderAddress;
+            socklen_t addressLength = sizeof(struct sockaddr_in);
+
+            ssize_t sizeBeRecieved =
+                recvfrom(this->dgramSocketFd, recvBuffer, RECV_BUFFER_SIZE,
+                    0,
+                    (struct sockaddr*)&senderAddress, &addressLength);
+
+            if (sizeBeRecieved < 0) {
+                if (errno != EINTR && errno != EAGAIN) {
+                    perror("Receive dgram");
+                    logError();
+                }
             }
             else {
-                Timer::runAllPendingTimouts();
+                handler(&senderAddress, recvBuffer, sizeBeRecieved, arg);
             }
-            continue;
         }
-
-        handler(&senderAddress, recvBuffer, sizeBeRecieved, arg);
+        Timer::runAllPendingTimouts();
     }
     return 0;
 }

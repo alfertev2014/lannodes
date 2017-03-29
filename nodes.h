@@ -48,10 +48,10 @@ private:
 
 public:
     int init(struct NetworkingConfig *netConfig);
-    void run();
+    int run();
 
 private:
-    void becameWithoutMaster();
+    int becameWithoutMaster();
 
     int sendMessage(enum MessageType type, sockaddr_in *peerAddress);
     int broadcastMessage(enum MessageType type);

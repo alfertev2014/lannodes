@@ -2,23 +2,27 @@
 
 #include <string.h>
 
+#include "logging.h"
+
+#include <arpa/inet.h>
+
 int SelfNode::init(NetworkingConfig *netConfig)
 {
     memset(&this->net, 0, sizeof(struct Networking));
     if (this->net.init(netConfig) == -1) {
-        // TODO: Log error
+        logError();
         return -1;
     }
 
     memset(&this->nodeIdentity, 0, sizeof(struct NodeIdentity));
 
     if (NodeIdentity::getSelfNodeIdentity(&this->nodeIdentity) == -1) {
-        // TODO: Log error
+        logError();
         return -1;
     }
 
     if (this->initTimers() == -1) {
-        // TODO: Log error
+        logError();
         return -1;
     }
 
@@ -94,23 +98,37 @@ void SelfNode::recvDgramHandler(struct sockaddr_in* senderAddress, char *message
     }
 }
 
-void SelfNode::run()
+int SelfNode::run()
 {
-    this->becameWithoutMaster();
-    this->net.runRecvLoop(recvDgramHandler, (void*)this);
+    printf("Running...\n");
+    if (this->becameWithoutMaster() == -1) {
+        logError();
+        return -1;
+    }
+    printf("Run recv loop\n");
+    if (this->net.runRecvLoop(recvDgramHandler, (void*)this) == -1) {
+        logError();
+        return -1;
+    }
+    printf("Exit from recv loop\n");
+    return 0;
 }
 
-void SelfNode::becameWithoutMaster()
+int SelfNode::becameWithoutMaster()
 {
+    printf("Become WithoutMaster\n");
     this->state = WithoutMaster;
+    printf("Broadcast WhoIsMaster\n");
     if (this->broadcastMessage(WhoIsMaster)) {
-        // TODO: Log error
-        return;
+        logError();
+        return -1;
     }
+    printf("Start WhoIsMaster timer\n");
     if (this->whoIsMasterTimer.start()) {
-        // TODO: Log error
-        return;
+        logError();
+        return -1;
     }
+    return 0;
 }
 
 #define MESSAGE_BUFFER_SIZE 8192
@@ -121,7 +139,7 @@ int SelfNode::sendMessage(MessageType type, struct sockaddr_in *peerAddress)
     size_t size = serializeMessage(type, &this->nodeIdentity, sendMessageBuffer);
 
     if (this->net.sendDgram(peerAddress, sendMessageBuffer, size) == -1) {
-        // TODO: Log error
+        logError();
         return -1;
     }
 
@@ -133,7 +151,7 @@ int SelfNode::broadcastMessage(MessageType type)
     size_t size = serializeMessage(type, &this->nodeIdentity, sendMessageBuffer);
 
     if (this->net.broadcastDgram(sendMessageBuffer, size) == -1) {
-        // TODO: Log error
+        logError();
         return -1;
     }
 
@@ -154,14 +172,25 @@ void SelfNode::onMessageReceived(MessageType type, struct NodeDescriptor *sender
 {
     struct NodeIdentity *senderId = &sender->id;
     struct sockaddr_in *senderAddress = &sender->peerAddress;
+    unsigned char *mac = senderId->macAddress;
+
+    char ipString[INET_ADDRSTRLEN];
+    memset(ipString, 0, INET_ADDRSTRLEN);
+
+    inet_ntop(AF_INET, &senderAddress->sin_addr, ipString, INET_ADDRSTRLEN);
+    printf("Message received from %s, %d, %02x:%02x:%02x:%02x:%02x:%02x\n", ipString, sender->id.processId,
+           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
     switch (type) {
     case WhoIsMaster:
+        printf("WhoIsMaster received\n");
         if (this->state == Master) {
+            printf(" when I am Master\n");
             int cmp = this->compareWithSelf(senderId);
             if (cmp < 0) {
+                printf("Broadcast IAmMaster\n");
                 if (this->broadcastMessage(IAmMaster) == -1) {
-                    // TODO: Log error
+                    logError();
                     return;
                 }
             }
@@ -170,62 +199,79 @@ void SelfNode::onMessageReceived(MessageType type, struct NodeDescriptor *sender
             }
         }
         else if (this->state == Slave) {
+            printf(" when I am Slave\n");
             if (this->compareWithSelf(senderId) < 0) {
+                printf("Send PleaseWait\n");
                 if (this->sendMessage(PleaseWait, senderAddress) == -1) {
-                    // TODO: Log error
+                    logError();
                     return;
                 }
             }
         }
         else if (this->state == WithoutMaster) {
+            printf(" when I am WithoutMaster\n");
             if (this->compareWithSelf(senderId) < 0) {
+                printf("Send PleaseWait\n");
                 if (this->sendMessage(PleaseWait, senderAddress) == -1) {
-                    // TODO: Log error
+                    logError();
                     return;
                 }
             }
         }
         break;
     case IAmMaster:
+        printf("IAmMaster received\n");
         if (this->state == WithoutMaster) {
+            printf(" when I am WithoutMaster\n");
+            printf("Become Slave\n");
             this->state = Slave;
             this->myMaster = *sender;
+            printf("Restart MonitoringMaster timer\n");
             if (this->monitoringMasterTimer.start() == -1) {
-                // TODO: Log error
+                logError();
                 return;
             }
         }
         else if (this->state == Slave) {
+            printf(" when I am Slave\n");
             this->myMaster = *sender;
+            printf("Restart MonitoringMaster timer\n");
             if (this->monitoringMasterTimer.start() == -1) {
-                // TODO: Log error
+                logError();
                 return;
             }
         }
         else if (this->state == Master) {
+            printf(" when I am Master\n");
             int cmp = this->compareWithSelf(senderId);
             if (cmp < 0) {
+                printf("Broadcast IAmMaster\n");
                 if (this->broadcastMessage(IAmMaster)) {
-                    // TODO: Log error
+                    logError();
                     return;
                 }
             }
             else if (cmp > 0) {
+                printf("Become Slave\n");
                 this->state = Slave;
                 this->myMaster = *sender;
+                printf("Restart MonitoringMaster timer\n");
                 if (this->monitoringMasterTimer.start() == -1) {
-                    // TODO: Log error
+                    logError();
                     return;
                 }
             }
         }
         break;
     case PleaseWait:
+        printf("PleaseWait received\n");
         if (this->state == WithoutMaster) {
+            printf(" when I am WithoutMaster\n");
             int cmp = this->compareWithSelf(senderId);
             if (cmp > 0) {
+                printf("Restart WhoIsMaster timer\n");
                 if (this->whoIsMasterTimer.start() == -1) {
-                    // TODO: Log error
+                    logError();
                     return;
                 }
             }
@@ -238,15 +284,19 @@ void SelfNode::onMessageReceived(MessageType type, struct NodeDescriptor *sender
 
 void SelfNode::onWhoIsMasterTimeout()
 {
+    printf("WhoIsMaster timeout");
+    printf("Become Master\n");
     this->state = Master;
+    printf("Broadcast IAmMaster\n");
     if (this->broadcastMessage(IAmMaster) == -1) {
-        // TODO: Log error
+        logError();
         return;
     }
 }
 
 void SelfNode::onMonitoringMasterTimeout()
 {
+    printf("MonitoringMaster timeout");
     this->becameWithoutMaster();
 }
 
@@ -264,14 +314,19 @@ void SelfNode::monitoringMasterTimeoutHandler(TimerHandlerArgument arg)
 
 int SelfNode::initTimers()
 {
-    TimerHandlerArgument arg;
-    arg.ptrValue = (void*)this;
-    if (this->whoIsMasterTimer.init(1000, false, SelfNode::whoIsMasterTimeoutHandler, arg) == -1) {
-        // TODO: Log error
+    if (Timer::initTimerSystem() == -1) {
+        logError();
         return -1;
     }
-    if (this->monitoringMasterTimer.init(5000, false, SelfNode::monitoringMasterTimeoutHandler, arg) == -1) {
-        // TODO: Log error
+
+    TimerHandlerArgument arg;
+    arg.ptrValue = (void*)this;
+    if (this->whoIsMasterTimer.init(10000, false, SelfNode::whoIsMasterTimeoutHandler, arg) == -1) {
+        logError();
+        return -1;
+    }
+    if (this->monitoringMasterTimer.init(50000, false, SelfNode::monitoringMasterTimeoutHandler, arg) == -1) {
+        logError();
         return -1;
     }
     return 0;

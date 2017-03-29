@@ -1,6 +1,6 @@
 identity.cpp
 identity.h
-main.h
+logging.h
 networking.cpp
 networking.h
 nodes.cpp

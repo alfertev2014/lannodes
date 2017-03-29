@@ -1,5 +1,7 @@
 TARGET = lannodes
-OBJS = main.o timers.o networking.o nodes.o
+OBJS = timers.o networking.o identity.o nodes.o main.o
+
+CFLAGS = --std=c++11 -g
 
 LIBS = -lrt
 
@@ -15,7 +17,7 @@ all: $(TARGET)
 
 
 $(TARGET) : $(OBJS)
-	gcc $(CFLAGS) $< $(LIBS) -o $@
+	gcc $(CFLAGS) $^ $(LIBS) -o $@
 
 
 .PHONY: all clean

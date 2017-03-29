@@ -7,12 +7,14 @@
 #include <net/if.h>
 #include <net/if_arp.h>
 
-static int getMACAddress(int fd, char *macAddressBuffer)
+#include "logging.h"
+
+static int getMACAddress(int fd, unsigned char *macAddressBuffer)
 {
     struct ifaddrs * ifAddrStruct = NULL;
 
     if (getifaddrs(&ifAddrStruct) == -1) {
-        // TODO: Log error
+        logError();
         return -1;
     }
 
@@ -20,7 +22,7 @@ static int getMACAddress(int fd, char *macAddressBuffer)
     for (struct ifaddrs *ifa = ifAddrStruct; ifa != NULL; ifa = ifa->ifa_next) {
         if (!ifa->ifa_addr)
             continue;
-        if (ifa->ifa_addr->sa_family != AF_INET ||
+        if (ifa->ifa_addr->sa_family != AF_INET &&
             ifa->ifa_addr->sa_family != AF_INET6) {
             continue;
         }
@@ -30,7 +32,7 @@ static int getMACAddress(int fd, char *macAddressBuffer)
         strncpy(ifr.ifr_name , ifa->ifa_name , IFNAMSIZ - 1);
 
         if (ioctl(fd, SIOCGIFHWADDR, &ifr) == -1) {
-            // TODO: Log error
+            logError();
             continue;
         }
 
@@ -53,19 +55,19 @@ int NodeIdentity::getSelfNodeIdentity(NodeIdentity *id)
     int socketFd = socket(AF_INET, SOCK_DGRAM, 0);
 
     if (socketFd < 0) {
-        // TODO: Log error
+        logError();
         return -1;
     }
 
     if (getMACAddress(socketFd, id->macAddress) == -1) {
-        // TODO: Log error
+        logError();
         return -1;
     }
 
     id->processId = getpid();
 
     if (close(socketFd) == -1) {
-        // TODO: Log error
+        logError();
         return -1;
     }
 
