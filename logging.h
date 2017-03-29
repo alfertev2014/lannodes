@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#define logPosition(...) fprintf(stderr, " in file \'%s\':%d, function: %s\n", __FILE__, __LINE__, __func__)
+#define logPosition(...) fprintf(stderr, "error at file \'%s\':%d, function: %s\n", __FILE__, __LINE__, __func__)
 
 void logInfo(const char *message);
 

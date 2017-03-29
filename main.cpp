@@ -1,11 +1,15 @@
 #include <stdio.h>
 
-#include "nodes.h"
+#include <stdlib.h>
+#include <time.h>
 
+#include "nodes.h"
 #include "logging.h"
 
 int main(int argc, char * argv[])
 {
+    srand(time(NULL));
+
     struct NetworkingConfig config;
     config.udpPort = 10500;
 

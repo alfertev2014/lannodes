@@ -30,6 +30,7 @@ int SelfNode::init(NetworkingConfig *netConfig)
     }
 
     this->state = WithoutMaster;
+    this->clientsCount = 0;
 
     return 0;
 }
@@ -158,7 +159,35 @@ void SelfNode::recvDgramHandler(struct sockaddr_in* senderAddress, unsigned char
     }
 
     if (self->compareWithSelf(&senderNode.id) != 0) {
-        self->onMessageReceived(type, &senderNode);
+        switch (type) {
+        case ControlResponse: {
+            int luminosity;
+            int temperature;
+            if (s.readInt32((uint32_t*)&luminosity) == -1) {
+                logPosition();
+                return;
+            }
+            if (s.readInt32((uint32_t*)&temperature) == -1) {
+                logPosition();
+                return;
+            }
+            self->onSensorsInfoReceived(&senderNode, luminosity, temperature);
+            break;
+        }
+        case ControlSet: {
+            int brightness;
+            if (s.readInt32((uint32_t*)&brightness) == -1) {
+                logPosition();
+                return;
+            }
+            self->onDisplayInfoReceived(&senderNode, brightness, (char*)s.buffer, s.bufferSize);
+            break;
+        }
+        default:
+            self->onMessageReceived(type, &senderNode);
+            break;
+        }
+
     }
 }
 
@@ -166,10 +195,19 @@ int SelfNode::run()
 {
     logInfo("Running...");
     printNodeIdentity(&this->nodeIdentity);
+
+    this->generateSensorsInfo();
+
     if (this->becomeWithoutMaster() == -1) {
         logPosition();
         return -1;
     }
+
+    if (this->sensorsEmulationTimer.start() == -1) {
+        logPosition();
+        return -1;
+    }
+
     logInfo("Run recv loop");
     if (this->net.runRecvLoop(recvDgramHandler, (void*)this) == -1) {
         logPosition();
@@ -185,6 +223,11 @@ int SelfNode::becomeWithoutMaster()
     if (this->state == Master) {
         logInfo("\t\tStop IAmAlive heartbeet timer");
         if (this->iAmAliveHeartbeetTimer.stop()) {
+            logPosition();
+            return -1;
+        }
+        logInfo("\t\tStop ControlRequest  timer");
+        if (this->controlRequestTimer.stop()) {
             logPosition();
             return -1;
         }
@@ -218,6 +261,12 @@ int SelfNode::becomeMaster()
         logPosition();
         return -1;
     }
+
+    logInfo("\t\tStart ControlRequest timer");
+    if (this->controlRequestTimer.start()) {
+        logPosition();
+        return -1;
+    }
     return 0;
 }
 
@@ -227,6 +276,11 @@ int SelfNode::becomeSlave(NodeDescriptor *master)
     if (this->state == Master) {
         logInfo("\t\tStop IAmAlive heartbeet timer");
         if (this->iAmAliveHeartbeetTimer.stop()) {
+            logPosition();
+            return -1;
+        }
+        logInfo("\t\tStop ControlRequest  timer");
+        if (this->controlRequestTimer.stop()) {
             logPosition();
             return -1;
         }
@@ -271,6 +325,58 @@ int SelfNode::broadcastMessage(MessageType type)
     WriteByteStream s;
     s.openStream(sendMessageBuffer, MESSAGE_BUFFER_SIZE);
     serializeMessage(&s, type, &this->nodeIdentity);
+
+    size_t size = (size_t)(s.buffer - sendMessageBuffer);
+
+    if (this->net.broadcastDgram(sendMessageBuffer, size) == -1) {
+        logPosition();
+        return -1;
+    }
+
+    return 0;
+}
+
+int SelfNode::sendMessageWithSensorInfo(sockaddr_in *peerAddress, int luminosity, int temperature)
+{
+    WriteByteStream s;
+    s.openStream(sendMessageBuffer, MESSAGE_BUFFER_SIZE);
+    if (serializeMessage(&s, ControlResponse, &this->nodeIdentity) == -1) {
+        logError("Error serialize message");
+        logPosition();
+        return -1;
+    }
+
+    if (s.writeInt32(luminosity) == -1)
+        return -1;
+
+    if (s.writeInt32(temperature) == -1)
+        return -1;
+
+    size_t size = (size_t)(s.buffer - sendMessageBuffer);
+
+    if (this->net.sendDgram(peerAddress, sendMessageBuffer, size) == -1) {
+        logPosition();
+        return -1;
+    }
+
+    return 0;
+}
+
+int SelfNode::sendMessageWithDisplayInfo(int brightness, char *displayText, size_t textLength)
+{
+    WriteByteStream s;
+    s.openStream(sendMessageBuffer, MESSAGE_BUFFER_SIZE);
+    if (serializeMessage(&s, ControlSet, &this->nodeIdentity) == -1) {
+        logError("Error serialize message");
+        logPosition();
+        return -1;
+    }
+
+    if (s.writeInt32(brightness) == -1)
+        return -1;
+
+    if (s.writeBytes((unsigned char*)displayText, textLength) == -1)
+        return -1;
 
     size_t size = (size_t)(s.buffer - sendMessageBuffer);
 
@@ -401,9 +507,37 @@ void SelfNode::onMessageReceived(MessageType type, struct NodeDescriptor *sender
             }
         }
         break;
+    case ControlRequest:
+        logInfo("ControlRequest received");
+        if (this->state == Slave) {
+            logInfo(" when I am Slave");
+            this->sendMessageWithSensorInfo(&sender->peerAddress, this->luminosity, this->temperature);
+        }
+        break;
     default:
         break;
     }
+}
+
+void SelfNode::onSensorsInfoReceived(NodeDescriptor *sender, int luminosity, int temperature)
+{
+    if (this->clientsCount == CLIENTS_MAX_COUNT - 1) {
+        logPosition();
+        return;
+    }
+
+    SensorInfo *sensorInfo = &this->receivedSensorsInfo[this->clientsCount];
+    sensorInfo->luminosity = luminosity;
+    sensorInfo->temperature = temperature;
+    ++this->clientsCount;
+}
+
+void SelfNode::onDisplayInfoReceived(NodeDescriptor *sender, int brightness, char *displayText, size_t textLength)
+{
+    logInfo("Display info received\n");
+    this->brightness = brightness;
+    strncpy(this->displayText, displayText, textLength);
+    printf("Brightness: %d, Text: %s\n", this->brightness, this->displayText);
 }
 
 void SelfNode::onWhoIsMasterTimeout()
@@ -438,6 +572,68 @@ void SelfNode::onIAmAliveHeartbeetTimeout()
     }
 }
 
+void SelfNode::onControlRequestTimeoutHandler()
+{
+    logInfo("ControlRequest timeout");
+
+    this->clientsCount = 0;
+
+    if (this->broadcastMessage(ControlRequest) == -1) {
+        logPosition();
+        return;
+    }
+
+    if (this->controlWaitResponceTimer.start() == -1) {
+        logPosition();
+        return;
+    }
+}
+
+void SelfNode::onControlWaitResponceTimeoutHandler()
+{
+    logInfo("ControlWaitResponce timeout");
+
+    if (this->clientsCount == 0) {
+        logInfo("Received sensors info is empty");
+    }
+
+    int meanTemperature = this->temperature;
+    int meanLuminosity = this->luminosity;
+
+    for(int i = 0; i < this->clientsCount; ++i) {
+        meanLuminosity += this->receivedSensorsInfo[i].luminosity;
+        meanTemperature += this->receivedSensorsInfo[i].temperature;
+    }
+    meanLuminosity /= this->clientsCount + 1;
+    meanTemperature /= this->clientsCount + 1;
+
+    sprintf(this->displayText, "Temperature: %d", temperature);
+
+    int brightness = meanLuminosity * 4 + 1000; // for example
+
+    if (this->sendMessageWithDisplayInfo(brightness, this->displayText, strlen(this->displayText)) == -1) {
+        logPosition();
+        return;
+    }
+
+    this->clientsCount = 0;
+}
+
+void SelfNode::onSensorsEmulationTimeout()
+{
+    logInfo("Sensors values has been changed");
+    this->generateSensorsInfo();
+}
+
+void SelfNode::generateSensorsInfo()
+{
+    this->luminosity = rand() % 100 + 1000;
+    printf("luminosity = %d\n", this->luminosity);
+
+    this->temperature = rand() % 20 + 10;
+    printf("temperature = %d\n", this->temperature);
+}
+
 void SelfNode::whoIsMasterTimeoutHandler(TimerHandlerArgument arg)
 {
     if (arg.ptrValue)
@@ -462,6 +658,24 @@ void SelfNode::iAmAliveHeartbeetTimeoutHandler(TimerHandlerArgument arg)
         ((SelfNode*)arg.ptrValue)->onIAmAliveHeartbeetTimeout();
 }
 
+void SelfNode::controlRequestTimeoutHandler(TimerHandlerArgument arg)
+{
+    if (arg.ptrValue)
+        ((SelfNode*)arg.ptrValue)->onControlRequestTimeoutHandler();
+}
+
+void SelfNode::controlWaitResponceTimeoutHandler(TimerHandlerArgument arg)
+{
+    if (arg.ptrValue)
+        ((SelfNode*)arg.ptrValue)->onControlWaitResponceTimeoutHandler();
+}
+
+void SelfNode::sensorsEmulationTimeoutHandler(TimerHandlerArgument arg)
+{
+    if (arg.ptrValue)
+        ((SelfNode*)arg.ptrValue)->onSensorsEmulationTimeout();
+}
+
 int SelfNode::initTimers()
 {
     if (Timer::initTimerSystem() == -1) {
@@ -484,6 +698,20 @@ int SelfNode::initTimers()
         return -1;
     }
     if (this->iAmAliveHeartbeetTimer.init(10000, true, SelfNode::iAmAliveHeartbeetTimeoutHandler, arg) == -1) {
+        logPosition();
+        return -1;
+    }
+
+    if (this->controlRequestTimer.init(20000, true, SelfNode::controlRequestTimeoutHandler, arg) == -1) {
+        logPosition();
+        return -1;
+    }
+    if (this->controlWaitResponceTimer.init(3000, false, SelfNode::controlWaitResponceTimeoutHandler, arg) == -1) {
+        logPosition();
+        return -1;
+    }
+
+    if (this->sensorsEmulationTimer.init(30000, true, SelfNode::sensorsEmulationTimeoutHandler, arg) == -1) {
         logPosition();
         return -1;
     }
