@@ -1,5 +1,5 @@
 TARGET = lannodes
-OBJS = timers.o networking.o identity.o nodes.o main.o
+OBJS = logging.o timers.o networking.o identity.o nodes.o main.o
 
 CFLAGS = --std=c++11 -g
 

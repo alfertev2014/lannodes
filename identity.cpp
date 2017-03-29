@@ -14,7 +14,7 @@ static int getMACAddress(int fd, unsigned char *macAddressBuffer)
     struct ifaddrs * ifAddrStruct = NULL;
 
     if (getifaddrs(&ifAddrStruct) == -1) {
-        logError();
+        logPosition();
         return -1;
     }
 
@@ -32,7 +32,7 @@ static int getMACAddress(int fd, unsigned char *macAddressBuffer)
         strncpy(ifr.ifr_name , ifa->ifa_name , IFNAMSIZ - 1);
 
         if (ioctl(fd, SIOCGIFHWADDR, &ifr) == -1) {
-            logError();
+            logPosition();
             continue;
         }
 
@@ -55,19 +55,19 @@ int NodeIdentity::getSelfNodeIdentity(NodeIdentity *id)
     int socketFd = socket(AF_INET, SOCK_DGRAM, 0);
 
     if (socketFd < 0) {
-        logError();
+        logPosition();
         return -1;
     }
 
     if (getMACAddress(socketFd, id->macAddress) == -1) {
-        logError();
+        logPosition();
         return -1;
     }
 
     id->processId = getpid();
 
     if (close(socketFd) == -1) {
-        logError();
+        logPosition();
         return -1;
     }
 

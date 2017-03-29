@@ -24,7 +24,7 @@ static int bindDgramSocket(struct sockaddr_in *addr)
 
     if (socketFd < 0) {
         perror("Bind dgram socket");
-        logError();
+        logPosition();
         return -1;
     }
 
@@ -34,7 +34,7 @@ static int bindDgramSocket(struct sockaddr_in *addr)
             SOL_SOCKET, SO_BROADCAST,
             &broadcastSocketOption, sizeof(int)) == -1) {
         perror("Set broadcast socket oprion");
-        logError();
+        logPosition();
         return -1;
     }
 
@@ -43,14 +43,14 @@ static int bindDgramSocket(struct sockaddr_in *addr)
             SOL_SOCKET, SO_REUSEADDR,
             &reuseAddressSocketOption, sizeof(int)) == -1) {
         perror("Set reuse address socket option");
-        logError();
+        logPosition();
         return 1;
     }
 
 
     if (bind(socketFd, (struct sockaddr*)addr, sizeof(struct sockaddr_in)) == -1) {
         perror("Bind dgram socket");
-        logError();
+        logPosition();
         return -1;
     }
 
@@ -73,7 +73,7 @@ int Networking::init(struct NetworkingConfig *config) {
 
     int socketFd = bindDgramSocket(&this->recvDgramAddress);
     if (socketFd == -1) {
-        logError();
+        logPosition();
         return -1;
     }
 
@@ -87,7 +87,7 @@ int Networking::deinit()
     {
         if (close(this->dgramSocketFd) == -1)
         {
-            logError();
+            logPosition();
             return -1;
         }
         this->dgramSocketFd = -1;
@@ -95,7 +95,7 @@ int Networking::deinit()
     return 0;
 }
 
-int Networking::broadcastDgram(char *content, size_t contentSize)
+int Networking::broadcastDgram(unsigned char *content, size_t contentSize)
 {
     ssize_t sizeBeSent =
         sendto(this->dgramSocketFd,
@@ -105,14 +105,14 @@ int Networking::broadcastDgram(char *content, size_t contentSize)
 
     if (sizeBeSent < 0) {
         perror("Broadcast dgram");
-        logError();
+        logPosition();
         return -1;
     }
 
     return sizeBeSent;
 }
 
-int Networking::sendDgram(struct sockaddr_in *peerAddress, char *content, size_t contentSize)
+int Networking::sendDgram(struct sockaddr_in *peerAddress, unsigned char *content, size_t contentSize)
 {
     ssize_t sizeBeSent =
         sendto(this->dgramSocketFd,
@@ -122,7 +122,7 @@ int Networking::sendDgram(struct sockaddr_in *peerAddress, char *content, size_t
 
     if (sizeBeSent < 0) {
         perror("Send dgram");
-        logError();
+        logPosition();
     }
 
     return sizeBeSent;
@@ -130,12 +130,12 @@ int Networking::sendDgram(struct sockaddr_in *peerAddress, char *content, size_t
 
 #define RECV_BUFFER_SIZE 8196
 
-char recvBuffer[RECV_BUFFER_SIZE];
+unsigned char recvBuffer[RECV_BUFFER_SIZE];
 
 int Networking::runRecvLoop(RecvHandler handler, void *arg)
 {
     if (this->dgramSocketFd < 0) {
-        logError();
+        logPosition();
         return -1;
     }
 
@@ -175,7 +175,7 @@ int Networking::runRecvLoop(RecvHandler handler, void *arg)
             if (sizeBeRecieved < 0) {
                 if (errno != EINTR && errno != EAGAIN) {
                     perror("Receive dgram");
-                    logError();
+                    logPosition();
                 }
             }
             else {

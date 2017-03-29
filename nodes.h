@@ -43,15 +43,18 @@ private:
     struct Networking net;
 
     struct Timer whoIsMasterTimer,
-            waitForPongMasterTimer,
-            monitoringMasterTimer;
+            waitForMasterTimer,
+            monitoringMasterTimer,
+            iAmAliveHeartbeetTimer;
 
 public:
     int init(struct NetworkingConfig *netConfig);
     int run();
 
 private:
-    int becameWithoutMaster();
+    int becomeWithoutMaster();
+    int becomeMaster();
+    int becomeSlave(struct NodeDescriptor *master);
 
     int sendMessage(enum MessageType type, sockaddr_in *peerAddress);
     int broadcastMessage(enum MessageType type);
@@ -59,7 +62,7 @@ private:
     int compareWithSelf(struct NodeIdentity *senderId);
     int compareWithCurrentMaster(struct NodeIdentity *senderId);
 
-    static void recvDgramHandler(struct sockaddr_in* senderAddress, char *message, size_t messageSize, void *arg);
+    static void recvDgramHandler(struct sockaddr_in* senderAddress, unsigned char *message, size_t messageSize, void *arg);
 
     void onMessageReceived(enum MessageType type, struct NodeDescriptor *sender);
 
@@ -67,9 +70,13 @@ private:
 
     static void whoIsMasterTimeoutHandler(TimerHandlerArgument arg);
     static void monitoringMasterTimeoutHandler(TimerHandlerArgument arg);
+    static void waitForMasterTimeoutHandler(TimerHandlerArgument arg);
+    static void iAmAliveHeartbeetTimeoutHandler(TimerHandlerArgument arg);
 
     void onWhoIsMasterTimeout();
     void onMonitoringMasterTimeout();
+    void onWaitForMasterTimeout();
+    void onIAmAliveHeartbeetTimeout();
 };
 
 #endif // NODES_H

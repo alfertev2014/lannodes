@@ -11,7 +11,7 @@ int main(int argc, char * argv[])
 
     SelfNode node;
     if (node.init(&config) == -1) {
-        logError();
+        logPosition();
         return -1;
     }
 
