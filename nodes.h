@@ -57,8 +57,8 @@ private:
 
     char displayText[DISPLAY_TEXT_MAX_SIZE];
     int brightness;
-    int temperature;
 
+    int temperature;
     int luminosity;
 
     SensorInfo receivedSensorsInfo[CLIENTS_MAX_COUNT];
@@ -125,6 +125,7 @@ private:
     void onSensorsEmulationTimeout();
 
     void generateSensorsInfo();
+    void displayInfo();
 };
 
 #endif // NODES_H

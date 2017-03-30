@@ -32,6 +32,9 @@ int SelfNode::init(NetworkingConfig *netConfig)
     this->state = WithoutMaster;
     this->clientsCount = 0;
 
+    memset(this->displayText, 0, DISPLAY_TEXT_MAX_SIZE);
+    this->brightness = 0;
+
     return 0;
 }
 
@@ -219,7 +222,7 @@ int SelfNode::run()
 
 int SelfNode::becomeWithoutMaster()
 {
-    logInfo("\tBecome WithoutMaster");
+    logInfo("\033[1;33m\tBecome WithoutMaster\033[0m");
     if (this->state == Master) {
         logInfo("\t\tStop IAmAlive heartbeet timer");
         if (this->iAmAliveHeartbeetTimer.stop()) {
@@ -249,7 +252,7 @@ int SelfNode::becomeWithoutMaster()
 
 int SelfNode::becomeMaster()
 {
-    logInfo("\tBecome Master");
+    logInfo("\033[1;33m\tBecome Master\033[0m");
     this->state = Master;
     logInfo("\t\tBroadcast IAmMaster");
     if (this->broadcastMessage(IAmMaster) == -1) {
@@ -272,7 +275,7 @@ int SelfNode::becomeMaster()
 
 int SelfNode::becomeSlave(NodeDescriptor *master)
 {
-    logInfo("\tBecome Slave");
+    logInfo("\033[1;33m\tBecome Slave\033[0m");
     if (this->state == Master) {
         logInfo("\t\tStop IAmAlive heartbeet timer");
         if (this->iAmAliveHeartbeetTimer.stop()) {
@@ -534,15 +537,15 @@ void SelfNode::onSensorsInfoReceived(NodeDescriptor *sender, int luminosity, int
 
 void SelfNode::onDisplayInfoReceived(NodeDescriptor *sender, int brightness, char *displayText, size_t textLength)
 {
-    logInfo("Display info received\n");
+    logInfo("Display info received");
     this->brightness = brightness;
     strncpy(this->displayText, displayText, textLength);
-    printf("Brightness: %d, Text: %s\n", this->brightness, this->displayText);
+    this->displayInfo();
 }
 
 void SelfNode::onWhoIsMasterTimeout()
 {
-    logInfo("WhoIsMaster timeout");
+    logInfo("\033[0;32mWhoIsMaster timeout\033[0m");
     if (this->becomeMaster() == -1) {
         logPosition();
     }
@@ -550,19 +553,19 @@ void SelfNode::onWhoIsMasterTimeout()
 
 void SelfNode::onMonitoringMasterTimeout()
 {
-    logInfo("MonitoringMaster timeout");
+    logInfo("\033[0;32mMonitoringMaster timeout\033[0m");
     this->becomeWithoutMaster();
 }
 
 void SelfNode::onWaitForMasterTimeout()
 {
-    logInfo("WaitForMaster timeout");
+    logInfo("\033[0;32mWaitForMaster timeout\033[0m");
     this->becomeWithoutMaster();
 }
 
 void SelfNode::onIAmAliveHeartbeetTimeout()
 {
-    logInfo("MasterAlive timeout");
+    logInfo("\033[0;32mMasterAlive timeout\033[0m");
     if (this->state == Master) {
         logInfo("\t\tBroadcast IAmMaster");
         this->broadcastMessage(IAmMaster);
@@ -574,7 +577,7 @@ void SelfNode::onIAmAliveHeartbeetTimeout()
 
 void SelfNode::onControlRequestTimeoutHandler()
 {
-    logInfo("ControlRequest timeout");
+    logInfo("\033[0;32mControlRequest timeout\033[0m");
 
     this->clientsCount = 0;
 
@@ -591,10 +594,10 @@ void SelfNode::onControlRequestTimeoutHandler()
 
 void SelfNode::onControlWaitResponceTimeoutHandler()
 {
-    logInfo("ControlWaitResponce timeout");
+    logInfo("\033[0;32mControlWaitResponce timeout\033[0m");
 
     if (this->clientsCount == 0) {
-        logInfo("Received sensors info is empty");
+        logInfo("\tReceived sensors info is empty");
     }
 
     int meanTemperature = this->temperature;
@@ -609,9 +612,11 @@ void SelfNode::onControlWaitResponceTimeoutHandler()
 
     sprintf(this->displayText, "Temperature: %d", temperature);
 
-    int brightness = meanLuminosity * 4 + 1000; // for example
+    this->brightness = meanLuminosity * 4 + 1000; // for example
 
-    if (this->sendMessageWithDisplayInfo(brightness, this->displayText, strlen(this->displayText)) == -1) {
+    logInfo("\t\tSend display info");
+    this->displayInfo();
+    if (this->sendMessageWithDisplayInfo(this->brightness, this->displayText, strlen(this->displayText)) == -1) {
         logPosition();
         return;
     }
@@ -628,10 +633,15 @@ void SelfNode::onSensorsEmulationTimeout()
 void SelfNode::generateSensorsInfo()
 {
     this->luminosity = rand() % 100 + 1000;
-    printf("luminosity = %d\n", this->luminosity);
+    printf("\033[0;33mluminosity = %d\n\033[0m", this->luminosity);
 
     this->temperature = rand() % 20 + 10;
-    printf("temperature = %d\n", this->temperature);
+    printf("\033[0;33mtemperature = %d\n\033[0m", this->temperature);
+}
+
+void SelfNode::displayInfo()
+{
+    printf("\033[1;37m\nBrightness: %d, Text: %s\n\n\033[0m", this->brightness, this->displayText);
 }
 
 void SelfNode::whoIsMasterTimeoutHandler(TimerHandlerArgument arg)
