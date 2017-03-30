@@ -22,14 +22,16 @@ static int getMACAddress(int fd, unsigned char *macAddressBuffer)
     for (struct ifaddrs *ifa = ifAddrStruct; ifa != NULL; ifa = ifa->ifa_next) {
         if (!ifa->ifa_addr)
             continue;
-        if (ifa->ifa_addr->sa_family != AF_INET &&
-            ifa->ifa_addr->sa_family != AF_INET6) {
-            continue;
-        }
         struct ifreq ifr;
-
-        ifr.ifr_addr.sa_family = AF_INET;
-        strncpy(ifr.ifr_name , ifa->ifa_name , IFNAMSIZ - 1);
+        if (ifa->ifa_addr->sa_family == AF_INET) {
+            ifr.ifr_addr.sa_family = AF_INET;
+            strncpy(ifr.ifr_name, ifa->ifa_name, IFNAMSIZ - 1);
+        }
+        else if (ifa->ifa_addr->sa_family == AF_INET6) {
+            ifr.ifr_addr.sa_family = AF_INET6;
+            strncpy(ifr.ifr_name, ifa->ifa_name, IFNAMSIZ - 1);
+        }
+        else continue;
 
         if (ioctl(fd, SIOCGIFHWADDR, &ifr) == -1) {
             logPosition();
