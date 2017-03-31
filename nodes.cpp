@@ -201,12 +201,17 @@ int SelfNode::run()
 
     this->generateSensorsInfo();
 
-    if (this->becomeWithoutMaster() == -1) {
+    if (this->sensorsEmulationTimer.start() == -1) {
         logPosition();
         return -1;
     }
 
-    if (this->sensorsEmulationTimer.start() == -1) {
+    logInfo("\t\tBroadcast WhoIsMaster");
+    if (this->broadcastMessage(WhoIsMaster)) {
+        logPosition();
+        return -1;
+    }
+    if (this->becomeWithoutMaster() == -1) {
         logPosition();
         return -1;
     }
@@ -223,27 +228,37 @@ int SelfNode::run()
 int SelfNode::becomeWithoutMaster()
 {
     logInfo("\033[1;33m\tBecome WithoutMaster\033[0m");
-    if (this->state == Master) {
-        logInfo("\t\tStop IAmAlive heartbeet timer");
-        if (this->iAmAliveHeartbeetTimer.stop()) {
-            logPosition();
-            return -1;
-        }
-        logInfo("\t\tStop ControlRequest  timer");
-        if (this->controlRequestTimer.stop()) {
-            logPosition();
-            return -1;
-        }
-    }
-
-    this->state = WithoutMaster;
-    logInfo("\t\tBroadcast WhoIsMaster");
-    if (this->broadcastMessage(WhoIsMaster)) {
+    if (this->stopMasterTimers() == -1) {
         logPosition();
         return -1;
     }
+
+    this->state = WithoutMaster;
     logInfo("\t\tStart WhoIsMaster timer");
     if (this->whoIsMasterTimer.start()) {
+        logPosition();
+        return -1;
+    }
+    return 0;
+}
+
+int SelfNode::becomeWaitingForMaster()
+{
+    logInfo("\033[1;33m\tWaiting for master\033[0m");
+    if (this->stopMasterTimers() == -1) {
+        logPosition();
+        return -1;
+    }
+
+    this->state = WithoutMaster;
+
+    logInfo("\t\tStщз WhoIsMaster timer");
+    if (this->whoIsMasterTimer.stop() == -1) {
+        logPosition();
+        return -1;
+    }
+    logInfo("\t\tStart WaitForMaster timer");
+    if (this->waitForMasterTimer.start()) {
         logPosition();
         return -1;
     }
@@ -276,6 +291,29 @@ int SelfNode::becomeMaster()
 int SelfNode::becomeSlave(NodeDescriptor *master)
 {
     logInfo("\033[1;33m\tBecome Slave\033[0m");
+    if (this->stopMasterTimers() == -1) {
+        logPosition();
+        return -1;
+    }
+
+    this->state = Slave;
+    this->myMaster = *master;
+
+    if (this->whoIsMasterTimer.stop() == -1) {
+        logPosition();
+        return -1;
+    }
+    logInfo("\t\tRestart MonitoringMaster timer");
+    if (this->monitoringMasterTimer.start() == -1) {
+        logPosition();
+        return -1;
+    }
+
+    return 0;
+}
+
+int SelfNode::stopMasterTimers()
+{
     if (this->state == Master) {
         logInfo("\t\tStop IAmAlive heartbeet timer");
         if (this->iAmAliveHeartbeetTimer.stop()) {
@@ -288,15 +326,6 @@ int SelfNode::becomeSlave(NodeDescriptor *master)
             return -1;
         }
     }
-
-    this->state = Slave;
-    this->myMaster = *master;
-    logInfo("\t\tRestart MonitoringMaster timer");
-    if (this->monitoringMasterTimer.start() == -1) {
-        logPosition();
-        return -1;
-    }
-
     return 0;
 }
 
@@ -305,6 +334,22 @@ unsigned char sendMessageBuffer[MESSAGE_BUFFER_SIZE];
 
 int SelfNode::sendMessage(MessageType type, struct sockaddr_in *peerAddress)
 {
+
+    switch (type) {
+    case WhoIsMaster:
+        logInfo("\t\tSend WhoIsMaster");
+        break;
+    case IAmMaster:
+        logInfo("\t\tSend IAmMaster");
+        break;
+    case PleaseWait:
+        logInfo("\t\tSend IAmMaster");
+        break;
+    case ControlRequest:
+        logInfo("\t\tSend ControlRequest");
+        break;
+    }
+
     WriteByteStream s;
     s.openStream(sendMessageBuffer, MESSAGE_BUFFER_SIZE);
     if (serializeMessage(&s, type, &this->nodeIdentity) == -1) {
@@ -325,6 +370,21 @@ int SelfNode::sendMessage(MessageType type, struct sockaddr_in *peerAddress)
 
 int SelfNode::broadcastMessage(MessageType type)
 {
+    switch (type) {
+    case WhoIsMaster:
+        logInfo("\t\tBroadcast WhoIsMaster");
+        break;
+    case IAmMaster:
+        logInfo("\t\tBroadcast IAmMaster");
+        break;
+    case PleaseWait:
+        logInfo("\t\tBroadcast IAmMaster");
+        break;
+    case ControlRequest:
+        logInfo("\t\tBroadcast ControlRequest");
+        break;
+    }
+
     WriteByteStream s;
     s.openStream(sendMessageBuffer, MESSAGE_BUFFER_SIZE);
     serializeMessage(&s, type, &this->nodeIdentity);
@@ -341,6 +401,8 @@ int SelfNode::broadcastMessage(MessageType type)
 
 int SelfNode::sendMessageWithSensorInfo(sockaddr_in *peerAddress, int luminosity, int temperature)
 {
+    logInfo("\t\tSend ControlResponse");
+
     WriteByteStream s;
     s.openStream(sendMessageBuffer, MESSAGE_BUFFER_SIZE);
     if (serializeMessage(&s, ControlResponse, &this->nodeIdentity) == -1) {
@@ -367,6 +429,8 @@ int SelfNode::sendMessageWithSensorInfo(sockaddr_in *peerAddress, int luminosity
 
 int SelfNode::sendMessageWithDisplayInfo(int brightness, char *displayText, size_t textLength)
 {
+    logInfo("\t\tSend ControlSet");
+
     WriteByteStream s;
     s.openStream(sendMessageBuffer, MESSAGE_BUFFER_SIZE);
     if (serializeMessage(&s, ControlSet, &this->nodeIdentity) == -1) {
@@ -401,6 +465,41 @@ int SelfNode::compareWithCurrentMaster(NodeIdentity *senderId)
     return NodeIdentity::compareNodeIdentities(senderId, &this->myMaster.id);
 }
 
+void logMessageReceived(MessageType type)
+{
+    switch (type) {
+    case WhoIsMaster:
+        logInfo("WhoIsMaster received");
+        break;
+    case IAmMaster:
+        logInfo("IAmMaster received");
+        break;
+    case PleaseWait:
+        logInfo("IAmMaster received");
+        break;
+    case ControlRequest:
+        logInfo("ControlRequest received");
+        break;
+    }
+}
+
+void logState(NodeState state)
+{
+    switch (state) {
+    case WithoutMaster:
+        logInfo(" when I am WithoutMaster");
+        break;
+    case Slave:
+        logInfo(" when I am Slave");
+        break;
+    case Master:
+        logInfo(" when I am Master");
+        break;
+    default:
+        break;
+    }
+}
+
 void SelfNode::onMessageReceived(MessageType type, struct NodeDescriptor *sender)
 {
     struct NodeIdentity *senderId = &sender->id;
@@ -409,115 +508,87 @@ void SelfNode::onMessageReceived(MessageType type, struct NodeDescriptor *sender
     logInfo("Message received from ");
     printNodeDescriptor(sender);
 
+    logMessageReceived(type);
+    logState(this->state);
+
     switch (type) {
     case WhoIsMaster:
-        logInfo("WhoIsMaster received");
         if (this->state == Master) {
-            logInfo(" when I am Master");
-            int cmp = this->compareWithSelf(senderId);
-            if (cmp < 0) {
-                logInfo("\t\tBroadcast IAmMaster");
+            if (this->compareWithSelf(senderId) < 0) {
                 if (this->broadcastMessage(IAmMaster) == -1) {
                     logPosition();
                     return;
                 }
             }
-            else if (cmp > 0) {
-                this->becomeWithoutMaster();
-            }
-        }
-        else if (this->state == Slave) {
-            logInfo(" when I am Slave");
-            if (this->compareWithSelf(senderId) < 0) {
-                logInfo("\t\tSend PleaseWait");
-                if (this->sendMessage(PleaseWait, senderAddress) == -1) {
+            else {
+                logInfo("\t\tBroadcast WhoIsMaster");
+                if (this->broadcastMessage(WhoIsMaster)) {
+                    logPosition();
+                    return;
+                }
+                if (this->becomeWithoutMaster() == -1) {
                     logPosition();
                     return;
                 }
             }
         }
-        else if (this->state == WithoutMaster) {
-            logInfo(" when I am WithoutMaster");
+        else {
             if (this->compareWithSelf(senderId) < 0) {
-                logInfo("\t\tSend PleaseWait");
                 if (this->sendMessage(PleaseWait, senderAddress) == -1) {
                     logPosition();
                     return;
                 }
             }
+            break;
         }
-        break;
     case IAmMaster:
-        logInfo("IAmMaster received");
-        if (this->state == WithoutMaster) {
-            logInfo(" when I am WithoutMaster");
-            int cmp = this->compareWithSelf(senderId);
-            if (cmp < 0) {
-                logInfo("\t\tSend WhoIsMaster");
-                if (this->sendMessage(WhoIsMaster, senderAddress) == -1) {
-                    logPosition();
-                    return;
-                }
-            }
-            else if (cmp > 0) {
-                if (this->becomeSlave(sender) == -1) {
-                    logPosition();
-                    return;
-                }
-            }
-        }
-        else if (this->state == Slave) {
-            logInfo(" when I am Slave");
-            int cmp = this->compareWithSelf(senderId);
-            if (cmp < 0) {
-                logInfo("\t\tSend WhoIsMaster");
-                if (this->sendMessage(WhoIsMaster, senderAddress) == -1) {
-                    logPosition();
-                    return;
-                }
-            }
-            else if (cmp > 0) {
-                logInfo("\t\tReset master");
-                this->becomeSlave(sender);
-            }
-        }
-        else if (this->state == Master) {
-            logInfo(" when I am Master");
-            int cmp = this->compareWithSelf(senderId);
-            if (cmp < 0) {
-                logInfo("\t\tBroadcast IAmMaster");
+        if (this->compareWithSelf(senderId) < 0) {
+            if (this->state == Master) {
                 if (this->broadcastMessage(IAmMaster)) {
                     logPosition();
                     return;
                 }
             }
-            else if (cmp > 0) {
-                this->becomeSlave(sender);
+            else {
+                if (this->sendMessage(PleaseWait, senderAddress) == -1) {
+                    logPosition();
+                    return;
+                }
+            }
+        }
+        else {
+            if (this->becomeSlave(sender) == -1) {
+                logPosition();
+                return;
             }
         }
         break;
     case PleaseWait:
-        logInfo("PleaseWait received");
-        if (this->state == WithoutMaster) {
-            logInfo(" when I am WithoutMaster");
-            int cmp = this->compareWithSelf(senderId);
-            if (cmp > 0) {
-                logInfo("\t\tRestart WhoIsMaster timer");
-                if (this->waitForMasterTimer.start() == -1) {
+        if (this->state == Slave) {
+            if (this->compareWithCurrentMaster(senderId) > 0) {
+                if (this->becomeWaitingForMaster() == -1) {
+                    logPosition();
+                    return;
+                }
+            }
+        }
+        else {
+            if (this->compareWithSelf(senderId) > 0) {
+                if (this->becomeWaitingForMaster() == -1) {
                     logPosition();
                     return;
                 }
             }
         }
         break;
+
     case ControlRequest:
-        logInfo("ControlRequest received");
         if (this->state == Slave) {
-            logInfo(" when I am Slave");
-            this->sendMessageWithSensorInfo(&sender->peerAddress, this->luminosity, this->temperature);
+            if (this->sendMessageWithSensorInfo(&sender->peerAddress, this->luminosity, this->temperature) == -1) {
+                logPosition();
+                return;
+            }
         }
-        break;
-    default:
         break;
     }
 }
@@ -551,16 +622,20 @@ void SelfNode::onWhoIsMasterTimeout()
     }
 }
 
-void SelfNode::onMonitoringMasterTimeout()
-{
-    logInfo("\033[0;32mMonitoringMaster timeout\033[0m");
-    this->becomeWithoutMaster();
-}
-
 void SelfNode::onWaitForMasterTimeout()
 {
     logInfo("\033[0;32mWaitForMaster timeout\033[0m");
-    this->becomeWithoutMaster();
+    if (this->becomeWithoutMaster() == -1) {
+        logPosition();
+    }
+}
+
+void SelfNode::onMonitoringMasterTimeout()
+{
+    logInfo("\033[0;32mMonitoringMaster timeout\033[0m");
+    if (this->becomeWithoutMaster() == -1) {
+        logPosition();
+    }
 }
 
 void SelfNode::onIAmAliveHeartbeetTimeout()

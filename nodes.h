@@ -80,8 +80,11 @@ public:
 
 private:
     int becomeWithoutMaster();
+    int becomeWaitingForMaster();
     int becomeMaster();
     int becomeSlave(struct NodeDescriptor *master);
+
+    int stopMasterTimers();
 
     int sendMessage(enum MessageType type, sockaddr_in *peerAddress);
     int broadcastMessage(enum MessageType type);
@@ -104,8 +107,8 @@ private:
 
 
     static void whoIsMasterTimeoutHandler(TimerHandlerArgument arg);
-    static void monitoringMasterTimeoutHandler(TimerHandlerArgument arg);
     static void waitForMasterTimeoutHandler(TimerHandlerArgument arg);
+    static void monitoringMasterTimeoutHandler(TimerHandlerArgument arg);
     static void iAmAliveHeartbeetTimeoutHandler(TimerHandlerArgument arg);
 
     static void controlRequestTimeoutHandler(TimerHandlerArgument arg);
@@ -115,8 +118,8 @@ private:
 
 
     void onWhoIsMasterTimeout();
-    void onMonitoringMasterTimeout();
     void onWaitForMasterTimeout();
+    void onMonitoringMasterTimeout();
     void onIAmAliveHeartbeetTimeout();
 
     void onControlRequestTimeoutHandler();
